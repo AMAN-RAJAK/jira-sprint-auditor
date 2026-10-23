@@ -1,0 +1,6 @@
+/target/
+/reports/
+/.idea/
+*.iml
+.env
+/company-audit.yml

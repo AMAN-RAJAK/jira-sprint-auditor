@@ -1,0 +1,67 @@
+# Copy this to a deployment-specific file, replace every sample value, and pass it
+# with --spring.config.additional-location=file:./company-audit.yml
+audit:
+  jira:
+    base-url: ${JIRA_BASE_URL}
+    email: ${JIRA_EMAIL}
+    api-token: ${JIRA_API_TOKEN}
+
+  # Use a stable numeric sprint ID. Include resolved issues in the result set.
+  # Audit stories as the primary scope. Linked Bugs and Tasks are checked by the
+  # final gate below, so they should not also be selected as primary issues.
+  jql: 'project = PAY AND sprint = 123 AND issuetype = Story ORDER BY key ASC'
+
+  # Required for every execution and the sole selector for day-based rules.
+  # Set AUDIT_RUN_DAY or override this with --audit.run-day=1/3/7/10.
+  # Dates, calendars, and time zones are not used to calculate this value.
+  run-day: ${AUDIT_RUN_DAY}
+
+  page-size: 100
+
+  # Rule keys (download, atdd) are company-owned configuration names.
+  # jira-field must be the REST field key, not the Jira screen label.
+  fields:
+    download:
+      label: Download
+      jira-field: customfield_10101
+      days:
+        1: [Started]
+        3: [In Progress]
+        7: [Done]
+        10: [Done]
+      when-resolved: [Done]
+    atdd:
+      label: ATDD_STATUS
+      jira-field: customfield_10102
+      days:
+        1: [Started]
+        3: [In Progress]
+        7: [Done]
+        10: [Done]
+      when-resolved: [Done]
+    # Native status is included so the sample final gate also requires each
+    # primary Story to be Done. Replace the names for your Jira workflow.
+    jira-status:
+      label: Jira Status
+      jira-field: status
+      days:
+        1: [To Do, In Progress, Done]
+        10: [Done]
+      when-resolved: [Done]
+
+  artifacts:
+    only-for-resolved: true
+    prefixes: [WBS_, CWC_, UT_]
+
+  # From Day 10 onward, every configured check must pass. Artifact checks are
+  # mandatory even for unresolved stories, and natively linked Bugs and Tasks
+  # must be in a completed Jira status category.
+  final-gate:
+    from-day: 10
+    linked-issue-types: [Bug, Task]
+    completed-status-category-keys: [completed, done]
+
+  report:
+    directory: ./reports
+    fail-on-violations: true
+    fail-on-empty: true

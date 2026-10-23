@@ -1,0 +1,8 @@
+spring:
+  main:
+    web-application-type: none
+    banner-mode: 'off'
+
+# Company audit rules intentionally live outside the jar. Start from
+# config/company-audit.example.yml and pass the copy with
+# --spring.config.additional-location=file:./company-audit.yml.
