@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 
 import java.io.IOException;
@@ -25,6 +26,31 @@ class AuditPropertiesBindingTest {
         contextRunner.withPropertyValues("audit.run-day=3").run(context -> {
             assertNull(context.getStartupFailure());
             assertEquals(3, context.getBean(AuditProperties.class).runDay());
+        });
+    }
+
+    @Test
+    void defaultApplicationMapsIntellijEnvironmentVariablesIntoJiraSettings() {
+        ApplicationContextRunner defaultConfigRunner = contextRunner.withInitializer(context -> {
+            try {
+                var sources = new YamlPropertySourceLoader().load("application",
+                        new ClassPathResource("application.yml"));
+                sources.forEach(source -> context.getEnvironment().getPropertySources().addLast(source));
+            } catch (IOException error) {
+                throw new IllegalStateException(error);
+            }
+        }).withPropertyValues(
+                "JIRA_BASE_URL=https://jira.company.example/jira",
+                "JIRA_ACCESS_TOKEN=intellij-pat"
+        );
+
+        defaultConfigRunner.run(context -> {
+            assertNull(context.getStartupFailure());
+            AuditProperties properties = context.getBean(AuditProperties.class);
+            assertNotNull(properties.jira());
+            assertEquals("https://jira.company.example/jira", properties.jira().baseUrl());
+            assertEquals("intellij-pat", properties.jira().personalAccessToken());
+            assertDoesNotThrow(() -> AuditConfigurationValidator.validateCredentials(properties));
         });
     }
 

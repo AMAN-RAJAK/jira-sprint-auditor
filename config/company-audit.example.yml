@@ -3,7 +3,7 @@ audit:
   jira:
     base-url: ${JIRA_BASE_URL}
     # Jira Server/Data Center PAT. It is sent as Authorization: Bearer <token>.
-    personal-access-token: ${JIRA_PERSONAL_ACCESS_TOKEN}
+    personal-access-token: ${JIRA_PERSONAL_ACCESS_TOKEN:${JIRA_ACCESS_TOKEN:}}
 
   # This query is the complete audit scope. Include every ticket to report.
   jql: 'project = PAY AND sprint = 123 AND issuetype = Story ORDER BY key ASC'

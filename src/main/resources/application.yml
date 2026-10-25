@@ -1,8 +1,19 @@
 spring:
+  config:
+    # Automatically load the local company policy when the working directory is
+    # the project root (the normal IntelliJ and command-line setup).
+    import: optional:file:./company-audit.yml
   main:
     web-application-type: none
     banner-mode: 'off'
 
+# Map simple IntelliJ/shell environment variables into the typed Jira settings.
+# JIRA_ACCESS_TOKEN is accepted as a convenient alias for the preferred name.
+audit:
+  jira:
+    base-url: ${JIRA_BASE_URL:}
+    personal-access-token: ${JIRA_PERSONAL_ACCESS_TOKEN:${JIRA_ACCESS_TOKEN:}}
+
 # Company audit rules intentionally live outside the jar. Start from
-# config/company-audit.example.yml and pass the copy with
-# --spring.config.additional-location=file:./company-audit.yml.
+# config/company-audit.example.yml and save the edited copy as
+# ./company-audit.yml.

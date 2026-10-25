@@ -86,6 +86,10 @@ Copy the sample policy:
 cp config/company-audit.example.yml company-audit.yml
 ```
 
+`company-audit.yml` is loaded automatically when the working directory is the
+project root. It contains the JQL, field IDs, expected day values, and artifact
+rules; the base URL and PAT still come from environment variables.
+
 Edit `company-audit.yml` and configure:
 
 - `audit.jql`: the complete list of tickets to audit;
@@ -136,31 +140,45 @@ export JIRA_BASE_URL='https://jira.company.example/jira'
 export JIRA_PERSONAL_ACCESS_TOKEN='your-profile-personal-access-token'
 ```
 
+`JIRA_ACCESS_TOKEN` is also accepted as an alias for
+`JIRA_PERSONAL_ACCESS_TOKEN`.
+
 Then choose the checkpoint explicitly:
 
 ```bash
 # Day 1
 java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --spring.config.additional-location=file:./company-audit.yml \
   --audit.run-day=1
 
 # Day 3
 java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --spring.config.additional-location=file:./company-audit.yml \
   --audit.run-day=3
 
 # Day 7
 java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --spring.config.additional-location=file:./company-audit.yml \
   --audit.run-day=7
 
 # Day 10 final audit
 java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --spring.config.additional-location=file:./company-audit.yml \
   --audit.run-day=10
 ```
 
 Days after 10 reuse the Day-10 policy, preserving the final-check behavior.
+
+### Run from IntelliJ IDEA
+
+Run `JiraAuditApplication.main()` with the project root as the working
+directory. In the run configuration, set:
+
+```text
+JIRA_BASE_URL=https://jira.company.example/jira
+JIRA_PERSONAL_ACCESS_TOKEN=<your PAT>
+AUDIT_RUN_DAY=3
+```
+
+Alternatively, put `--audit.run-day=3` in **Program arguments**. Before running,
+make sure `company-audit.yml` exists in the project root and contains your real
+JQL, Jira custom-field IDs, and expected values.
 
 ## Results and exit codes
 
