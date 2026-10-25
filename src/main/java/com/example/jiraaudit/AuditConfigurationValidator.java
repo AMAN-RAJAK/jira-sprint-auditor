@@ -102,11 +102,13 @@ public final class AuditConfigurationValidator {
     private static void validateArtifacts(AuditProperties.Artifacts artifacts,
                                           Map<String, AuditProperties.FieldRule> dayTenFields) {
         if (artifacts == null) throw new IllegalArgumentException("audit.artifacts is required");
-        required(artifacts.day3WbsPrefix(), "audit.artifacts.day-3-wbs-prefix");
+        validatePrefixAlternatives(artifacts.day3WbsPrefix(), artifacts.day3WbsPrefixList(),
+                "audit.artifacts.day-3-wbs-prefix");
         if (artifacts.day10() == null) {
             throw new IllegalArgumentException("audit.artifacts.day-10 is required");
         }
-        required(artifacts.day10().wbsPrefix(), "audit.artifacts.day-10.wbs-prefix");
+        validatePrefixAlternatives(artifacts.day10().wbsPrefix(),
+                artifacts.day10().wbsPrefixList(), "audit.artifacts.day-10.wbs-prefix");
 
         String[] names = {"cwc", "ut", "atdd", "st"};
         AuditProperties.ArtifactRule[] rules = {
@@ -114,7 +116,9 @@ public final class AuditConfigurationValidator {
                 artifacts.day10().atdd(), artifacts.day10().st()
         };
         Set<String> prefixes = new HashSet<>();
-        prefixes.add(normalize(artifacts.day10().wbsPrefix()));
+        artifacts.day10().wbsPrefixList().stream()
+                .map(AuditConfigurationValidator::normalize)
+                .forEach(prefixes::add);
         for (int index = 0; index < rules.length; index++) {
             String name = names[index];
             AuditProperties.ArtifactRule rule = rules[index];
@@ -140,6 +144,23 @@ public final class AuditConfigurationValidator {
         if (utHasField || utHasValues) {
             throw new IllegalArgumentException(
                     "Day 10 UT uses the UT/ATDD alternative rule and must not configure a field-rule");
+        }
+    }
+
+    private static void validatePrefixAlternatives(String configuredPrefixes,
+                                                   List<String> prefixes,
+                                                   String settingName) {
+        required(configuredPrefixes, settingName);
+        if (prefixes.stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException(settingName +
+                    " contains an empty $-separated prefix");
+        }
+        Set<String> unique = new HashSet<>();
+        for (String prefix : prefixes) {
+            if (!unique.add(normalize(prefix))) {
+                throw new IllegalArgumentException(settingName +
+                        " contains a duplicate prefix: " + prefix);
+            }
         }
     }
 

@@ -81,7 +81,10 @@ class AuditPropertiesBindingTest {
                     .requiresNonEmptyValue());
             assertEquals(List.of("Resolved", "Closed", "Done"),
                     properties.checkpoints().get(10).linkedBugs().resolvedStatusList());
-            assertEquals("WBS_", properties.artifacts().day3WbsPrefix());
+            assertEquals(List.of("WBS_", "WORK_BREAKDOWN_"),
+                    properties.artifacts().day3WbsPrefixList());
+            assertEquals(List.of("WBS_", "WORK_BREAKDOWN_"),
+                    properties.artifacts().day10().wbsPrefixList());
             assertEquals(List.of("Not Applicable"),
                     properties.artifacts().day10().atdd().notApplicableValueList());
             assertEquals("CWC Not Applicable",

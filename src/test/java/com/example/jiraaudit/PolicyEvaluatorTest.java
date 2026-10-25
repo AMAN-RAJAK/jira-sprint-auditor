@@ -32,7 +32,7 @@ class PolicyEvaluatorTest {
 
         assertEquals(3, results.size());
         assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
-        assertEquals(List.of("WBS_"), results.stream()
+        assertEquals(List.of("WBS"), results.stream()
                 .filter(result -> result.checkType().equals("ARTIFACT"))
                 .map(CheckResult::ruleKey).toList());
         assertFalse(evaluator.requiresComments(issue, TestAuditProperties.settings(3), 3));
@@ -49,9 +49,29 @@ class PolicyEvaluatorTest {
 
         assertTrue(results.stream().filter(result -> result.checkType().equals("FIELD"))
                 .allMatch(result -> result.outcome() == PASS));
-        CheckResult wbs = result(results, "WBS_");
+        CheckResult wbs = result(results, "WBS");
         assertEquals(FAIL, wbs.outcome());
         assertTrue(wbs.reason().contains("cannot be waived"));
+    }
+
+    @Test
+    void wbsPassesWhenAttachmentMatchesAnyConfiguredPrefix() throws Exception {
+        AuditProperties base = TestAuditProperties.settings(3);
+        AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3,
+                base.pageSize(), base.checkpoints(),
+                new AuditProperties.Artifacts("WBS_$WORK_BREAKDOWN_", base.artifacts().day10()),
+                base.report());
+        var issue = issue("""
+                {"status":{"name":"In Progress"},"coding":"In Progress",
+                 "download":"Started","attachment":[{"filename":"work_breakdown_scope.xlsx"}]}
+                """);
+
+        CheckResult wbs = result(evaluator.evaluate(issue, custom, 3, List.of()), "WBS");
+
+        assertEquals(PASS, wbs.outcome());
+        assertEquals("Attached filename starts with any of: WBS_ | WORK_BREAKDOWN_",
+                wbs.expected());
+        assertEquals("work_breakdown_scope.xlsx", wbs.actual());
     }
 
     @Test

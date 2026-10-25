@@ -35,9 +35,17 @@ public record AuditProperties(
             return dollarSeparatedValues(resolvedStatuses);
         }
     }
-    public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) { }
+    public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) {
+        public List<String> day3WbsPrefixList() {
+            return dollarSeparatedValues(day3WbsPrefix);
+        }
+    }
     public record Day10Artifacts(String wbsPrefix, ArtifactRule cwc, ArtifactRule ut,
-                                 ArtifactRule atdd, ArtifactRule st) { }
+                                 ArtifactRule atdd, ArtifactRule st) {
+        public List<String> wbsPrefixList() {
+            return dollarSeparatedValues(wbsPrefix);
+        }
+    }
     public record ArtifactRule(String prefix, String fieldRule,
                                String notApplicableValues, String commentContains) {
         public List<String> notApplicableValueList() {

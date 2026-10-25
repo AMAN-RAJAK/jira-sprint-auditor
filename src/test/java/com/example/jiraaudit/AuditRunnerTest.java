@@ -135,7 +135,7 @@ class AuditRunnerTest {
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {
             var row = workbook.getSheet("Audit Results").getRow(1);
             assertEquals("FAIL", row.getCell(6).getStringCellValue());
-            assertTrue(row.getCell(7).getStringCellValue().contains("WBS_"));
+            assertTrue(row.getCell(7).getStringCellValue().contains("WBS"));
             assertTrue(row.getCell(7).getStringCellValue().contains("Coding Status"));
         }
     }

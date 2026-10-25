@@ -212,6 +212,49 @@ class AuditConfigurationValidatorTest {
                 .getMessage().contains("Duplicate Day 10 artifact prefix"));
     }
 
+    @Test
+    void wbsPrefixesAllowAlternativesAndRejectEmptyOrDuplicateEntries() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        AuditProperties.Day10Artifacts dayTen = base.artifacts().day10();
+        AuditProperties.Artifacts alternatives = new AuditProperties.Artifacts(
+                "WBS_$WORK_BREAKDOWN_",
+                new AuditProperties.Day10Artifacts("WBS_$WORK_BREAKDOWN_",
+                        dayTen.cwc(), dayTen.ut(), dayTen.atdd(), dayTen.st()));
+
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
+                copy(base, base.jira(), 10, base.checkpoints(), alternatives)));
+        assertEquals(List.of("WBS_", "WORK_BREAKDOWN_"),
+                alternatives.day3WbsPrefixList());
+
+        AuditProperties.Artifacts empty = new AuditProperties.Artifacts("WBS_$$ESTIMATE_",
+                dayTen);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, base.checkpoints(), empty)))
+                .getMessage().contains("empty $-separated prefix"));
+
+        AuditProperties.Artifacts duplicate = new AuditProperties.Artifacts("WBS_$wbs_",
+                dayTen);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, base.checkpoints(), duplicate)))
+                .getMessage().contains("duplicate prefix"));
+    }
+
+    @Test
+    void everyDayTenWbsAlternativeMustBeUniqueAcrossArtifactPrefixes() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        AuditProperties.Day10Artifacts dayTen = base.artifacts().day10();
+        AuditProperties.Artifacts invalid = new AuditProperties.Artifacts("WBS_",
+                new AuditProperties.Day10Artifacts("WBS_$CWC_", dayTen.cwc(),
+                        dayTen.ut(), dayTen.atdd(), dayTen.st()));
+
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, base.checkpoints(), invalid)))
+                .getMessage().contains("Duplicate Day 10 artifact prefix"));
+    }
+
     private static AuditProperties copy(AuditProperties base,
                                         AuditProperties.Jira jira,
                                         Integer day,

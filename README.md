@@ -29,7 +29,7 @@ sprint-calendar, or time-zone calculation.
 - Only the fields under `audit.checkpoints.3.fields` are checked.
 - Each field passes when its Jira value matches any configured
   `accepted-values` entry.
-- An attachment whose filename starts with the configured WBS prefix is
+- An attachment whose filename starts with any configured WBS prefix is
   mandatory.
 - CWC, UT, ATDD, and ST artifacts are not checked on Day 3.
 
@@ -108,8 +108,8 @@ Configure these company-specific values in `company-audit.yml`:
 - `audit.jql`: the complete story scope for the audit;
 - `audit.checkpoints.3.fields`: Day-3 Jira field IDs and possible values;
 - `audit.checkpoints.10.fields`: Day-10 Jira field IDs and possible values;
-- `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename prefix;
-- Day-10 WBS, CWC, UT, ATDD, and ST filename prefixes;
+- `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename prefix or alternative prefixes;
+- Day-10 WBS alternative prefixes and CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
 - each mapped artifact's configurable `not-applicable-values`;
 - CWC, UT, and ST standard `comment-contains` phrases;
@@ -138,6 +138,22 @@ not-applicable-values: 'Not Applicable$No Testing Required$N/A'
 ```
 
 This also preserves commas inside a single Not Applicable value.
+
+WBS can also have multiple possible filename prefixes. Configure them as one
+quoted `$`-separated string for each checkpoint:
+
+```yaml
+artifacts:
+  day-3-wbs-prefix: 'WBS_$WORK_BREAKDOWN_$ESTIMATE_'
+  day-10:
+    wbs-prefix: 'WBS_$WORK_BREAKDOWN_$ESTIMATE_'
+```
+
+The WBS check passes when at least one attachment filename starts with any one
+of these prefixes. Prefix matching is case-insensitive. Empty alternatives such
+as `WBS_$$ESTIMATE_` and duplicate alternatives are rejected at startup. A
+single prefix such as `WBS_` remains valid, so existing configuration does not
+need to change.
 
 Configure the Day-10 linked Bug check under the Day-10 checkpoint. Resolved
 statuses use the same `$` separator and are matched case-insensitively:

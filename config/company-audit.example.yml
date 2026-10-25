@@ -62,12 +62,14 @@ audit:
         resolved-statuses: 'Resolved$Closed$Done'
 
   artifacts:
-    # Day 3 has exactly one artifact rule: WBS must be attached.
-    day-3-wbs-prefix: WBS_
+    # WBS accepts one or more alternative filename prefixes separated with $.
+    # A WBS attachment matching ANY configured prefix passes the check.
+    # Quote the value so YAML preserves it as one string.
+    day-3-wbs-prefix: 'WBS_$WORK_BREAKDOWN_'
 
     day-10:
       # WBS is always mandatory and cannot be replaced by a comment.
-      wbs-prefix: WBS_
+      wbs-prefix: 'WBS_$WORK_BREAKDOWN_'
 
       # not-applicable-values uses the same quoted $ separator as accepted-values.
       # CWC and ST must be absent when their mapped field is Not Applicable;

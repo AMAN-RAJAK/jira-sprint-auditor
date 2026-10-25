@@ -83,12 +83,13 @@ public class PolicyEvaluator {
                                           List<JiraClient.JiraComment> comments) {
         JsonNode attachments = fields.get("attachment");
         if (policyDay == 3) {
-            results.add(requiredArtifact(details, attachments, properties.artifacts().day3WbsPrefix()));
+            results.add(requiredArtifact(details, attachments, "WBS",
+                    properties.artifacts().day3WbsPrefixList()));
             return;
         }
 
         AuditProperties.Day10Artifacts dayTen = properties.artifacts().day10();
-        results.add(requiredArtifact(details, attachments, dayTen.wbsPrefix()));
+        results.add(requiredArtifact(details, attachments, "WBS", dayTen.wbsPrefixList()));
         Map<String, AuditProperties.FieldRule> dayTenFields = properties.checkpoints().get(10).fields();
         results.add(configurableArtifact(details, fields, attachments, dayTenFields,
                 "CWC", dayTen.cwc(), comments));
@@ -101,17 +102,20 @@ public class PolicyEvaluator {
                 dayTen.ut(), dayTen.atdd()));
     }
 
-    private static CheckResult requiredArtifact(IssueDetails details, JsonNode attachments, String prefix) {
+    private static CheckResult requiredArtifact(IssueDetails details, JsonNode attachments,
+                                                String artifactName, List<String> prefixes) {
         if (attachments == null || !attachments.isArray()) {
-            return malformedAttachment(details, prefix);
+            return malformedAttachment(details, artifactName);
         }
-        List<String> matches = matchingAttachments(attachments, prefix);
+        List<String> matches = matchingAttachments(attachments, prefixes);
         boolean passed = !matches.isEmpty();
-        return new CheckResult(details, "ARTIFACT", prefix, prefix, "attachment",
-                "Attached filename starts with " + prefix,
+        String expectedPrefixes = String.join(" | ", prefixes);
+        return new CheckResult(details, "ARTIFACT", artifactName, artifactName, "attachment",
+                "Attached filename starts with any of: " + expectedPrefixes,
                 passed ? String.join(" | ", matches) : "<missing>", passed ? PASS : FAIL,
-                passed ? "Required artifact is attached" :
-                        "Required artifact " + prefix + " is not attached and cannot be waived");
+                passed ? "Required " + artifactName + " artifact is attached" :
+                        "Required " + artifactName + " artifact is not attached; expected one of " +
+                                expectedPrefixes + " and it cannot be waived");
     }
 
     private static CheckResult configurableArtifact(
@@ -358,6 +362,14 @@ public class PolicyEvaluator {
     private static List<String> matchingAttachments(JsonNode attachments, String prefix) {
         return attachmentNames(attachments).stream()
                 .filter(name -> normalize(name).startsWith(normalize(prefix))).toList();
+    }
+
+    private static List<String> matchingAttachments(JsonNode attachments, List<String> prefixes) {
+        return attachmentNames(attachments).stream()
+                .filter(name -> prefixes.stream()
+                        .anyMatch(prefix -> normalize(name).startsWith(normalize(prefix))))
+                .distinct()
+                .toList();
     }
 
     private static List<String> attachmentNames(JsonNode attachments) {
