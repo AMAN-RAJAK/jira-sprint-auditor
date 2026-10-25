@@ -62,7 +62,9 @@ public class PolicyEvaluator {
         if (attachments == null || !attachments.isArray()) return false;
         List<String> filenames = attachmentNames(attachments);
         Map<String, AuditProperties.FieldRule> fields = properties.checkpoints().get(10).fields();
-        for (AuditProperties.ArtifactRule rule : dayTenRules(properties.artifacts().day10())) {
+        AuditProperties.Day10Artifacts artifacts = properties.artifacts().day10();
+        for (AuditProperties.ArtifactRule rule :
+                List.of(artifacts.cwc(), artifacts.ut(), artifacts.st())) {
             if (!hasAttachment(filenames, rule.prefix()) &&
                     !hasNotApplicableFieldEvidence(issue.fields(), fields, rule)) {
                 return true;
@@ -87,11 +89,11 @@ public class PolicyEvaluator {
                 "CWC", dayTen.cwc(), comments));
         results.add(configurableArtifact(details, fields, attachments, dayTenFields,
                 "UT", dayTen.ut(), comments));
-        results.add(configurableArtifact(details, fields, attachments, dayTenFields,
-                "ATDD", dayTen.atdd(), comments));
+        results.add(atddArtifact(details, fields, attachments, dayTenFields, dayTen.atdd()));
         results.add(configurableArtifact(details, fields, attachments, dayTenFields,
                 "ST", dayTen.st(), comments));
-        results.add(utAtddCombination(details, attachments, dayTen.ut().prefix(), dayTen.atdd().prefix()));
+        results.add(utAtddCombination(details, fields, attachments, dayTenFields,
+                dayTen.ut(), dayTen.atdd()));
     }
 
     private static CheckResult requiredArtifact(IssueDetails details, JsonNode attachments, String prefix) {
@@ -159,25 +161,75 @@ public class PolicyEvaluator {
                                 artifact.commentContains() + "\"");
     }
 
-    private static CheckResult utAtddCombination(IssueDetails details, JsonNode attachments,
-                                                  String utPrefix, String atddPrefix) {
+    private static CheckResult atddArtifact(
+            IssueDetails details,
+            JsonNode fields,
+            JsonNode attachments,
+            Map<String, AuditProperties.FieldRule> configuredFields,
+            AuditProperties.ArtifactRule atdd) {
+        if (attachments == null || !attachments.isArray()) {
+            return malformedAttachment(details, atdd.prefix());
+        }
+        List<String> attached = matchingAttachments(attachments, atdd.prefix());
+        boolean fieldNotApplicable = hasNotApplicableFieldEvidence(fields, configuredFields, atdd);
+        String fieldEvidence = fieldEvidence(fields, configuredFields, atdd);
+        boolean passed = fieldNotApplicable ? attached.isEmpty() : !attached.isEmpty();
+        String expected = fieldNotApplicable
+                ? "ATDD must be absent when " + fieldEvidence
+                : "ATDD attachment filename starts with " + atdd.prefix();
+        String actual = attached.isEmpty()
+                ? "attachment=<missing>; " + fieldEvidence
+                : "attachment=" + String.join(" | ", attached) + "; " + fieldEvidence;
+        String reason;
+        if (passed) {
+            reason = fieldNotApplicable
+                    ? "ATDD correctly omitted because ATDD Status is Not Applicable"
+                    : "ATDD artifact is attached for the applicable ATDD Status";
+        } else {
+            reason = fieldNotApplicable
+                    ? "ATDD must not be attached because ATDD Status is Not Applicable"
+                    : "ATDD is required for the applicable ATDD Status and cannot be waived by a comment";
+        }
+        return new CheckResult(details, "ARTIFACT", atdd.prefix(), "ATDD",
+                "attachment + " + atdd.fieldRule(), expected, actual,
+                passed ? PASS : FAIL, reason);
+    }
+
+    private static CheckResult utAtddCombination(
+            IssueDetails details,
+            JsonNode fields,
+            JsonNode attachments,
+            Map<String, AuditProperties.FieldRule> configuredFields,
+            AuditProperties.ArtifactRule ut,
+            AuditProperties.ArtifactRule atdd) {
         if (attachments == null || !attachments.isArray()) {
             return new CheckResult(details, "ARTIFACT_COMBINATION", "UT_OR_ATDD",
-                    "UT/ATDD combination", "attachment", "Exactly one of UT or ATDD is attached",
+                    "UT/ATDD combination", "attachment + ATDD Status",
+                    "Valid UT/ATDD evidence for the ATDD Status",
                     "<not returned>", FAIL, "Jira attachment data was not returned or is malformed");
         }
         List<String> filenames = attachmentNames(attachments);
-        boolean hasUt = hasAttachment(filenames, utPrefix);
-        boolean hasAtdd = hasAttachment(filenames, atddPrefix);
-        boolean passed = hasUt ^ hasAtdd;
+        boolean hasUt = hasAttachment(filenames, ut.prefix());
+        boolean hasAtdd = hasAttachment(filenames, atdd.prefix());
+        boolean atddNotApplicable = hasNotApplicableFieldEvidence(fields, configuredFields, atdd);
+        boolean passed = atddNotApplicable ? !hasAtdd : hasAtdd && !hasUt;
         String actual = "UT=" + (hasUt ? "attached" : "missing") +
-                "; ATDD=" + (hasAtdd ? "attached" : "missing");
+                "; ATDD=" + (hasAtdd ? "attached" : "missing") +
+                "; " + fieldEvidence(fields, configuredFields, atdd);
+        String expected = atddNotApplicable
+                ? "ATDD is absent; UT is attached or has its Not Applicable comment"
+                : "ATDD is attached and UT is absent with its Not Applicable comment";
+        String reason = passed
+                ? atddNotApplicable
+                        ? "ATDD is correctly absent; the separate UT check validates its attachment or comment"
+                        : "ATDD is attached and UT is correctly absent"
+                : atddNotApplicable
+                        ? "ATDD must be absent when ATDD Status is Not Applicable"
+                        : "When ATDD Status is applicable, ATDD must be attached and UT must be absent";
         return new CheckResult(details, "ARTIFACT_COMBINATION", "UT_OR_ATDD",
-                "UT/ATDD combination", "attachment",
-                "Exactly one of " + utPrefix + " or " + atddPrefix + " is attached",
+                "UT/ATDD combination", "attachment + " + atdd.fieldRule(), expected,
                 actual, passed ? PASS : FAIL,
-                passed ? "Valid final artifact combination" :
-                        "Exactly one of UT or ATDD must be attached; both attached or both missing is invalid");
+                reason);
     }
 
     private static CheckResult malformedAttachment(IssueDetails details, String prefix) {
@@ -192,7 +244,8 @@ public class PolicyEvaluator {
             AuditProperties.ArtifactRule artifact) {
         if (artifact.fieldRule() == null || artifact.fieldRule().isBlank()) return false;
         AuditProperties.FieldRule rule = configuredFields.get(artifact.fieldRule());
-        return matchesAny(flattenValues(fields.get(rule.jiraField())), artifact.notApplicableValues());
+        return matchesAny(flattenValues(fields.get(rule.jiraField())),
+                artifact.notApplicableValueList());
     }
 
     private static String fieldEvidence(JsonNode fields,
@@ -202,11 +255,6 @@ public class PolicyEvaluator {
         AuditProperties.FieldRule rule = configuredFields.get(artifact.fieldRule());
         return displayLabel(artifact.fieldRule(), rule.label()) + "=" +
                 displayValues(flattenValues(fields.get(rule.jiraField())));
-    }
-
-    private static List<AuditProperties.ArtifactRule> dayTenRules(
-            AuditProperties.Day10Artifacts artifacts) {
-        return List.of(artifacts.cwc(), artifacts.ut(), artifacts.atdd(), artifacts.st());
     }
 
     private static List<String> matchingAttachments(JsonNode attachments, String prefix) {

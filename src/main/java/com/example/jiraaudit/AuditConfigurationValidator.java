@@ -105,7 +105,9 @@ public final class AuditConfigurationValidator {
             if (!prefixes.add(normalize(rule.prefix()))) {
                 throw new IllegalArgumentException("Duplicate Day 10 artifact prefix: " + rule.prefix());
             }
-            required(rule.commentContains(), "comment-contains for Day 10 " + name);
+            if (!"atdd".equals(name)) {
+                required(rule.commentContains(), "comment-contains for Day 10 " + name);
+            }
         }
 
         validateFieldBasedArtifact("cwc", artifacts.day10().cwc(), dayTenFields);
@@ -114,7 +116,7 @@ public final class AuditConfigurationValidator {
 
         AuditProperties.ArtifactRule ut = artifacts.day10().ut();
         boolean utHasField = ut.fieldRule() != null && !ut.fieldRule().isBlank();
-        boolean utHasValues = ut.notApplicableValues() != null && !ut.notApplicableValues().isEmpty();
+        boolean utHasValues = ut.notApplicableValues() != null && !ut.notApplicableValues().isBlank();
         if (utHasField || utHasValues) {
             throw new IllegalArgumentException(
                     "Day 10 UT uses the UT/ATDD alternative rule and must not configure a field-rule");
@@ -129,11 +131,13 @@ public final class AuditConfigurationValidator {
             throw new IllegalArgumentException("Unknown Day 10 field-rule for " + name + ": " +
                     artifact.fieldRule());
         }
-        if (artifact.notApplicableValues() == null || artifact.notApplicableValues().isEmpty()) {
+        if (artifact.notApplicableValues() == null || artifact.notApplicableValues().isBlank()) {
             throw new IllegalArgumentException("not-applicable-values are required for Day 10 " + name);
         }
-        artifact.notApplicableValues().forEach(value -> required(value,
-                "not-applicable value for Day 10 " + name));
+        if (artifact.notApplicableValueList().stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException("not-applicable-values contains an empty $-separated value " +
+                    "for Day 10 " + name);
+        }
     }
 
     private static String normalize(String value) {

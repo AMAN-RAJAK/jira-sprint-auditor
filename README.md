@@ -40,8 +40,8 @@ sprint-calendar, or time-zone calculation.
 - WBS is always mandatory and cannot be waived by a comment.
 - CWC, ST, and ATDD are linked to configured Day-10 field rules, each with its
   own configurable Not Applicable values.
-- Exactly one of UT or ATDD must be attached. Both attached or both absent is a
-  failure, even when comments exist.
+- ATDD Status decides the ATDD/UT evidence path. An applicable ATDD Status
+  requires ATDD; a Not Applicable ATDD Status permits UT or a UT comment.
 
 The Day-10 artifact decisions are:
 
@@ -50,19 +50,21 @@ The Day-10 artifact decisions are:
 | WBS | Must be attached |
 | CWC | If Coding Status is configured as Not Applicable, CWC must be absent; otherwise CWC attachment or the configured CWC comment is required |
 | ST | If ST Status is configured as Not Applicable, ST must be absent; otherwise ST attachment or the configured ST comment is required |
-| ATDD | If ATDD Status is configured as Not Applicable, ATDD must be absent; otherwise ATDD attachment or the configured ATDD comment is required |
-| UT | Has no mapped status field; it must be attached or have the configured UT comment |
+| ATDD | If ATDD Status matches `not-applicable-values`, ATDD must be absent; otherwise ATDD must be attached and cannot be waived by a comment |
+| UT | Has no mapped status field; when absent it requires the configured `UT Not Applicable` comment |
 
-This permits the two final attachment paths requested by the policy:
+The ATDD/UT combinations are:
 
-- WBS + CWC + UT, with ATDD omitted using ATDD field-level Not Applicable
-  evidence or the configured ATDD comment; or
-- WBS + CWC + ATDD, with UT omitted using the configured UT comment.
+- ATDD Status Not Applicable: ATDD must be absent. UT may be attached, or both
+  ATDD and UT may be absent when a matching UT Not Applicable comment exists.
+- ATDD Status applicable: ATDD must be attached, UT must be absent, and a
+  matching UT Not Applicable comment is required.
 
 ST remains an independent rule in both paths: attach it when applicable, or
 omit it when its mapped field is Not Applicable. If an applicable CWC, ST, or
-ATDD artifact is absent, its configured standard comment can provide the
-missing-artifact evidence.
+UT artifact is absent, its configured standard comment can provide the
+missing-artifact evidence. A comment can never replace a required WBS or ATDD
+attachment.
 
 Field comparisons, attachment-prefix comparisons, and comment-phrase searches
 are case-insensitive. Jira comments are requested in newest-first order, all
@@ -106,7 +108,7 @@ Configure these company-specific values in `company-audit.yml`:
 - Day-10 WBS, CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
 - each mapped artifact's configurable `not-applicable-values`;
-- each optional artifact's standard `comment-contains` phrase; and
+- CWC, UT, and ST standard `comment-contains` phrases; and
 - report output and failure behavior.
 
 Day 3 and Day 10 field lists are independent. A field may be configured on one
@@ -123,6 +125,14 @@ preserved, so this configuration defines exactly two possible values:
 ```yaml
 accepted-values: 'Not Applicable (POC, Backporting, NoCodeChange)$Suite Pass (90%)'
 ```
+
+Artifact `not-applicable-values` uses the same quoted `$` format:
+
+```yaml
+not-applicable-values: 'Not Applicable$No Testing Required$N/A'
+```
+
+This also preserves commas inside a single Not Applicable value.
 
 The `$` character is reserved as the separator and cannot be part of an
 accepted Jira value. Leading and trailing spaces around each separated value

@@ -80,6 +80,8 @@ class AuditPropertiesBindingTest {
             assertTrue(properties.checkpoints().get(3).fields().get("revised-sp")
                     .requiresNonEmptyValue());
             assertEquals("WBS_", properties.artifacts().day3WbsPrefix());
+            assertEquals(List.of("Not Applicable"),
+                    properties.artifacts().day10().atdd().notApplicableValueList());
             assertEquals("CWC Not Applicable",
                     properties.artifacts().day10().cwc().commentContains());
             assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties));

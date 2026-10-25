@@ -22,10 +22,7 @@ public record AuditProperties(
         public static final String NON_EMPTY_VALUE = "__NON_EMPTY__";
 
         public List<String> acceptedValueList() {
-            if (acceptedValues == null) return List.of();
-            return Arrays.stream(acceptedValues.split("\\$", -1))
-                    .map(String::trim)
-                    .toList();
+            return dollarSeparatedValues(acceptedValues);
         }
 
         public boolean requiresNonEmptyValue() {
@@ -37,6 +34,17 @@ public record AuditProperties(
     public record Day10Artifacts(String wbsPrefix, ArtifactRule cwc, ArtifactRule ut,
                                  ArtifactRule atdd, ArtifactRule st) { }
     public record ArtifactRule(String prefix, String fieldRule,
-                               List<String> notApplicableValues, String commentContains) { }
+                               String notApplicableValues, String commentContains) {
+        public List<String> notApplicableValueList() {
+            return dollarSeparatedValues(notApplicableValues);
+        }
+    }
     public record Report(String directory, Boolean failOnViolations, Boolean failOnEmpty) { }
+
+    private static List<String> dollarSeparatedValues(String configuredValues) {
+        if (configuredValues == null) return List.of();
+        return Arrays.stream(configuredValues.split("\\$", -1))
+                .map(String::trim)
+                .toList();
+    }
 }

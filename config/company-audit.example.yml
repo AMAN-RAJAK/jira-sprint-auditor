@@ -64,31 +64,32 @@ audit:
       # WBS is always mandatory and cannot be replaced by a comment.
       wbs-prefix: WBS_
 
-      # If the mapped field has a configured Not Applicable value, the
-      # corresponding artifact MUST be absent. Otherwise an attachment or the
-      # configured standard comment is required.
+      # not-applicable-values uses the same quoted $ separator as accepted-values.
+      # CWC and ST must be absent when their mapped field is Not Applicable;
+      # otherwise their attachment or configured standard comment is required.
       cwc:
         prefix: CWC_
         field-rule: coding-status
-        not-applicable-values: [Not Applicable]
+        not-applicable-values: 'Not Applicable'
         comment-contains: CWC Not Applicable
 
-      # UT has no status field. When UT is the unselected UT/ATDD alternative,
-      # its absence must be explained by this standard comment.
+      # UT has no status field. Its absence always requires this comment.
       ut:
         prefix: UT_
         comment-contains: UT Not Applicable
 
+      # If ATDD Status matches not-applicable-values, ATDD must be absent and
+      # UT must either be attached or have the UT Not Applicable comment.
+      # Otherwise ATDD is mandatory and cannot be waived by an ATDD comment.
       atdd:
         prefix: ATDD_
         field-rule: atdd-status
-        not-applicable-values: [Not Applicable]
-        comment-contains: ATDD Not Applicable
+        not-applicable-values: 'Not Applicable'
 
       st:
         prefix: ST_
         field-rule: st-status
-        not-applicable-values: [Not Applicable]
+        not-applicable-values: 'Not Applicable'
         comment-contains: ST Not Applicable
 
   report:

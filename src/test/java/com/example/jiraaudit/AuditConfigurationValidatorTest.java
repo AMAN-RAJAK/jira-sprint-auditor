@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -110,7 +111,7 @@ class AuditConfigurationValidatorTest {
         AuditProperties.Artifacts invalid = new AuditProperties.Artifacts("WBS_",
                 new AuditProperties.Day10Artifacts(dayTen.wbsPrefix(),
                         new AuditProperties.ArtifactRule("CWC_", "unknown-field",
-                                List.of("N/A"), "CWC Not Applicable"),
+                                "N/A", "CWC Not Applicable"),
                         dayTen.ut(), dayTen.atdd(), dayTen.st()));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -126,20 +127,34 @@ class AuditConfigurationValidatorTest {
         AuditProperties.Artifacts custom = new AuditProperties.Artifacts("WBS_",
                 new AuditProperties.Day10Artifacts(dayTen.wbsPrefix(),
                         new AuditProperties.ArtifactRule("CWC_", "coding-status",
-                                List.of("No Coding Required", "N/A"), "CWC Not Applicable"),
+                                "No Coding Required$Not Applicable (POC, Backporting, NoCodeChange)$N/A",
+                                "CWC Not Applicable"),
                         dayTen.ut(), dayTen.atdd(), dayTen.st()));
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
                 copy(base, base.jira(), 10, base.checkpoints(), custom)));
+        assertEquals(List.of("No Coding Required",
+                        "Not Applicable (POC, Backporting, NoCodeChange)", "N/A"),
+                custom.day10().cwc().notApplicableValueList());
 
         AuditProperties.Artifacts missingValues = new AuditProperties.Artifacts("WBS_",
                 new AuditProperties.Day10Artifacts(dayTen.wbsPrefix(),
                         new AuditProperties.ArtifactRule("CWC_", "coding-status",
-                                List.of(), "CWC Not Applicable"),
+                                "", "CWC Not Applicable"),
                         dayTen.ut(), dayTen.atdd(), dayTen.st()));
         assertTrue(assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, base.checkpoints(), missingValues)))
                 .getMessage().contains("not-applicable-values"));
+
+        AuditProperties.Artifacts emptySeparatedValue = new AuditProperties.Artifacts("WBS_",
+                new AuditProperties.Day10Artifacts(dayTen.wbsPrefix(),
+                        new AuditProperties.ArtifactRule("CWC_", "coding-status",
+                                "Not Applicable$$N/A", "CWC Not Applicable"),
+                        dayTen.ut(), dayTen.atdd(), dayTen.st()));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, base.checkpoints(), emptySeparatedValue)))
+                .getMessage().contains("empty $-separated value"));
     }
 
     @Test
@@ -149,7 +164,7 @@ class AuditConfigurationValidatorTest {
         AuditProperties.Artifacts invalid = new AuditProperties.Artifacts("WBS_",
                 new AuditProperties.Day10Artifacts(dayTen.wbsPrefix(), dayTen.cwc(),
                         new AuditProperties.ArtifactRule("UT_", "coding-status",
-                                List.of("Not Applicable"), "UT Not Applicable"),
+                                "Not Applicable", "UT Not Applicable"),
                         dayTen.atdd(), dayTen.st()));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,

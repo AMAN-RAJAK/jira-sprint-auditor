@@ -88,7 +88,7 @@ class PolicyEvaluatorTest {
     }
 
     @Test
-    void exactlyOneOfUtAndAtddMustBeAttached() throws Exception {
+    void atddStatusControlsTheValidUtAndAtddCombination() throws Exception {
         var both = issue("""
                 {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
                  "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
@@ -103,9 +103,33 @@ class PolicyEvaluatorTest {
 
         assertEquals(FAIL, result(evaluator.evaluate(both, TestAuditProperties.settings(10), 10,
                 List.of()), "UT_OR_ATDD").outcome());
-        assertEquals(FAIL, result(evaluator.evaluate(neither, TestAuditProperties.settings(10), 10,
-                List.of(comment("1", "UT Not Applicable", "2026-10-25T09:00:00Z"))),
-                "UT_OR_ATDD").outcome());
+        assertTrue(evaluator.requiresComments(neither, TestAuditProperties.settings(10), 10));
+        var neitherWithUtComment = evaluator.evaluate(neither, TestAuditProperties.settings(10), 10,
+                List.of(comment("1", "UT Not Applicable", "2026-10-25T09:00:00Z")));
+        assertTrue(neitherWithUtComment.stream().allMatch(result -> result.outcome() == PASS));
+
+        CheckResult missingUtComment = result(evaluator.evaluate(neither,
+                TestAuditProperties.settings(10), 10, List.of()), "UT_");
+        assertEquals(FAIL, missingUtComment.outcome());
+        assertTrue(missingUtComment.reason().contains("UT Not Applicable"));
+    }
+
+    @Test
+    void applicableAtddStatusRequiresAttachmentEvenWhenAtddCommentExists() throws Exception {
+        var issue = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"UT_results"},{"filename":"ST_results"}]}
+                """);
+
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(10), 10,
+                List.of(comment("1", "ATDD Not Applicable", "2026-10-25T09:00:00Z")));
+
+        CheckResult atdd = result(results, "ATDD_");
+        assertEquals(FAIL, atdd.outcome());
+        assertTrue(atdd.reason().contains("cannot be waived by a comment"));
+        assertEquals(FAIL, result(results, "UT_OR_ATDD").outcome());
+        assertFalse(evaluator.requiresComments(issue, TestAuditProperties.settings(10), 10));
     }
 
     @Test

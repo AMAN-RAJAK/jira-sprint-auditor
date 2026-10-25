@@ -1,7 +1,6 @@
 package com.example.jiraaudit;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 final class TestAuditProperties {
@@ -43,15 +42,14 @@ final class TestAuditProperties {
         return new AuditProperties.Artifacts("WBS_", new AuditProperties.Day10Artifacts(
                 "WBS_",
                 new AuditProperties.ArtifactRule(
-                        "CWC_", "coding-status", List.of("Not Applicable"),
+                        "CWC_", "coding-status", "Not Applicable",
                         "CWC Not Applicable"),
                 new AuditProperties.ArtifactRule(
                         "UT_", null, null, "UT Not Applicable"),
                 new AuditProperties.ArtifactRule(
-                        "ATDD_", "atdd-status", List.of("Not Applicable"),
-                        "ATDD Not Applicable"),
+                        "ATDD_", "atdd-status", "Not Applicable", null),
                 new AuditProperties.ArtifactRule(
-                        "ST_", "st-status", List.of("Not Applicable"),
+                        "ST_", "st-status", "Not Applicable",
                         "ST Not Applicable")));
     }
 }
