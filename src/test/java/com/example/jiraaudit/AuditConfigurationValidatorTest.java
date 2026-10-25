@@ -244,28 +244,21 @@ class AuditConfigurationValidatorTest {
     }
 
     @Test
-    void dayTenFieldValuesMustAllowTheCwcAndStExceptions() {
-        Map<String, AuditProperties.FieldRule> fieldsWithoutNoCodeChanges =
+    void dayTenFieldValuesCanUseAnyConfiguredAllowedValues() {
+        Map<String, AuditProperties.FieldRule> customDayTenValues =
                 new LinkedHashMap<>(validFields());
-        fieldsWithoutNoCodeChanges.put("coding-status", new AuditProperties.FieldRule(
+        customDayTenValues.put("coding-status", new AuditProperties.FieldRule(
                 "Coding Status", "customfield_10101",
                 Map.of(1, List.of("Started"), 3, List.of("In Progress"),
-                        7, List.of("Done"), 10, List.of("Done"))));
-        IllegalArgumentException codingError = assertThrows(IllegalArgumentException.class,
-                () -> AuditConfigurationValidator.validatePolicy(
-                        properties(10, fieldsWithoutNoCodeChanges, validArtifacts())));
-        assertTrue(codingError.getMessage().contains("coding-status must include: No Code Changes"));
-
-        Map<String, AuditProperties.FieldRule> fieldsWithoutNotApplicable =
-                new LinkedHashMap<>(validFields());
-        fieldsWithoutNotApplicable.put("st-status", new AuditProperties.FieldRule(
+                        7, List.of("Done"),
+                        10, List.of("Done - On Time", "Not Applicable"))));
+        customDayTenValues.put("st-status", new AuditProperties.FieldRule(
                 "ST Status", "customfield_10102",
                 Map.of(1, List.of("Not Started"), 3, List.of("In Progress"),
-                        7, List.of("Done"), 10, List.of("Done"))));
-        IllegalArgumentException stError = assertThrows(IllegalArgumentException.class,
-                () -> AuditConfigurationValidator.validatePolicy(
-                        properties(10, fieldsWithoutNotApplicable, validArtifacts())));
-        assertTrue(stError.getMessage().contains("st-status must include: Not Applicable"));
+                        7, List.of("Done"), 10, List.of("Executed - On Time"))));
+
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
+                properties(10, customDayTenValues, validArtifacts())));
     }
 
     private AuditProperties properties(Integer day) {

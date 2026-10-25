@@ -100,9 +100,9 @@ Edit `company-audit.yml` and configure:
 
 The named `WBS_`, `CWC_`, `UT_`, `ATDD_`, and `ST_` prefixes and the four
 Not Applicable rules shown in the sample are mandatory. The CWC rule uses the
-`coding-status` field-rule key, the ST rule uses `st-status`, and their required
-Day-10 exception values must remain configured. Additional Day-10 artifact
-prefixes are allowed, but they cannot be waived.
+`coding-status` field-rule key and the ST rule uses `st-status`. These artifact
+exception conditions do not restrict the normal Day-10 accepted-value lists.
+Additional Day-10 artifact prefixes are allowed, but they cannot be waived.
 
 The sample file is [`config/company-audit.example.yml`](config/company-audit.example.yml).
 

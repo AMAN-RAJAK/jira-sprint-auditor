@@ -95,6 +95,32 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    void dayTenFieldPassesWhenAnyConfiguredValueMatches() throws Exception {
+        AuditProperties base = settings();
+        Map<String, AuditProperties.FieldRule> customFields = new LinkedHashMap<>(base.fields());
+        customFields.put("coding-status", new AuditProperties.FieldRule(
+                "Coding Status", "coding",
+                Map.of(1, List.of("Started"), 3, List.of("In Progress"), 7, List.of("Done"),
+                        10, List.of("Done - On Time", "Not Applicable"))));
+        AuditProperties custom = new AuditProperties(base.jira(), base.jql(), base.runDay(),
+                base.pageSize(), customFields, base.artifacts(), base.report());
+        var issue = issue("""
+                {"status":{"name":"Done"},"coding":"Not Applicable","st":"Done",
+                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                   {"filename":"UT_results"},{"filename":"ATDD_evidence"},
+                   {"filename":"ST_results"}]}
+                """);
+
+        CheckResult coding = evaluator.evaluate(issue, custom, 10, List.of()).stream()
+                .filter(result -> result.checkName().equals("Coding Status"))
+                .findFirst().orElseThrow();
+
+        assertEquals(PASS, coding.outcome());
+        assertEquals("Done - On Time | Not Applicable", coding.expected());
+        assertEquals("Not Applicable", coding.actual());
+    }
+
+    @Test
     void missingWbsAlwaysFailsEvenWhenACommentClaimsNotApplicable() throws Exception {
         var issue = issue("""
                 {"status":{"name":"Done"},"coding":"Done","st":"Done",

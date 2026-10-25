@@ -175,21 +175,6 @@ public final class AuditConfigurationValidator {
                 null, List.of());
         validateRequiredException(normalizedExceptions, "st_", "ST Not Applicable",
                 "st-status", List.of("Not Applicable"));
-        validateDayTenFieldValue(fields, "coding-status", "No Code Changes");
-        validateDayTenFieldValue(fields, "st-status", "Not Applicable");
-    }
-
-    private static void validateDayTenFieldValue(Map<String, AuditProperties.FieldRule> fields,
-                                                  String fieldRule,
-                                                  String requiredValue) {
-        AuditProperties.FieldRule rule = fields.get(fieldRule);
-        boolean configured = rule.days().get(10).stream()
-                .map(AuditConfigurationValidator::normalize)
-                .anyMatch(normalize(requiredValue)::equals);
-        if (!configured) {
-            throw new IllegalArgumentException("Day 10 values for " + fieldRule +
-                    " must include: " + requiredValue);
-        }
     }
 
     private static void validateRequiredException(
