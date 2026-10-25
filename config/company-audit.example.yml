@@ -1,72 +1,82 @@
-# Copy this file to company-audit.yml and replace every sample value.
+# Copy this file to ./company-audit.yml and replace every sample value.
 audit:
   jira:
     base-url: ${JIRA_BASE_URL}
-    # Jira Server/Data Center PAT. It is sent as Authorization: Bearer <token>.
     personal-access-token: ${JIRA_PERSONAL_ACCESS_TOKEN:${JIRA_ACCESS_TOKEN:}}
 
-  # This query is the complete audit scope. Include every ticket to report.
+  # This JQL is the complete audit scope.
   jql: 'project = PAY AND sprint = 123 AND issuetype = Story ORDER BY key ASC'
 
-  # Required on each run. Override with --audit.run-day=1, 3, 7, or 10.
+  # Only Day 3 and Day 10 are supported.
   run-day: ${AUDIT_RUN_DAY}
   page-size: 100
 
-  # Replace the sample custom-field IDs and values with your Jira configuration.
-  # Every field has one exact expectation for each supported checkpoint.
-  fields:
-    coding-status:
-      label: Coding Status
-      jira-field: customfield_10101
-      days:
-        1: [Started]
-        3: [In Progress]
-        7: [Done]
-        10: [Done, No Code Changes]
+  # Each checkpoint independently declares the fields checked on that day.
+  # A field passes when its Jira value matches ANY accepted value.
+  checkpoints:
+    3:
+      fields:
+        download:
+          label: Download
+          jira-field: customfield_10103
+          accepted-values: [Started, In Progress, Done - On Time, Not Applicable]
+        coding-status:
+          label: Coding Status
+          jira-field: customfield_10101
+          accepted-values: [In Progress, Done - On Time, Not Applicable]
 
-    st-status:
-      label: ST Status
-      jira-field: customfield_10102
-      days:
-        1: [Not Started]
-        3: [In Progress]
-        7: [Done]
-        10: [Done, Not Applicable]
-
-    download:
-      label: Download
-      jira-field: customfield_10103
-      days:
-        1: [Started]
-        3: [In Progress]
-        7: [Done]
-        10: [Done]
+    10:
+      fields:
+        coding-status:
+          label: Coding Status
+          jira-field: customfield_10101
+          accepted-values: [Done - On Time, Not Applicable]
+        st-status:
+          label: ST Status
+          jira-field: customfield_10102
+          accepted-values: [Done - On Time, Not Applicable]
+        atdd-status:
+          label: ATDD Status
+          jira-field: customfield_10104
+          accepted-values: [Done - On Time, Not Applicable]
+        download:
+          label: Download
+          jira-field: customfield_10103
+          accepted-values: [Done - On Time, Not Applicable]
 
   artifacts:
-    # Empty lists mean that no artifacts are checked on that checkpoint.
-    # These five named prefixes are mandatory. Additional Day 10 prefixes are
-    # allowed, but they remain strictly required and cannot have exceptions.
-    required-by-day:
-      1: []
-      3: [WBS_]
-      7: []
-      10: [WBS_, CWC_, UT_, ATDD_, ST_]
+    # Day 3 has exactly one artifact rule: WBS must be attached.
+    day-3-wbs-prefix: WBS_
 
-    # These exact four rules are mandatory. WBS has no exception.
-    # For CWC and ST, BOTH the field condition and comment are required.
-    # For UT and ATDD, the matching comment is sufficient.
-    missing-exceptions:
-      CWC_:
+    day-10:
+      # WBS is always mandatory and cannot be replaced by a comment.
+      wbs-prefix: WBS_
+
+      # If the mapped field has a configured Not Applicable value, the
+      # corresponding artifact MUST be absent. Otherwise an attachment or the
+      # configured standard comment is required.
+      cwc:
+        prefix: CWC_
         field-rule: coding-status
-        field-values: [No Code Changes]
+        not-applicable-values: [Not Applicable]
         comment-contains: CWC Not Applicable
-      UT_:
+
+      # UT has no status field. When UT is the unselected UT/ATDD alternative,
+      # its absence must be explained by this standard comment.
+      ut:
+        prefix: UT_
         comment-contains: UT Not Applicable
-      ATDD_:
+
+      atdd:
+        prefix: ATDD_
+        field-rule: atdd-status
+        not-applicable-values: [Not Applicable]
         comment-contains: ATDD Not Applicable
-      ST_:
+
+      st:
+        prefix: ST_
         field-rule: st-status
-        field-values: [Not Applicable]
+        not-applicable-values: [Not Applicable]
         comment-contains: ST Not Applicable
 
   report:

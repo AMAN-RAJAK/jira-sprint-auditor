@@ -13,7 +13,7 @@
   <artifactId>jira-sprint-auditor</artifactId>
   <version>1.0.0</version>
   <name>Jira Sprint Auditor</name>
-  <description>Configurable, day-aware Jira fields and attachment audit</description>
+  <description>Configurable Day 3 and Day 10 Jira compliance audit</description>
   <properties><java.version>21</java.version></properties>
   <dependencies>
     <dependency>

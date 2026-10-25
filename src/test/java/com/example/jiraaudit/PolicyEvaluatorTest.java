@@ -1,13 +1,12 @@
 package com.example.jiraaudit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import static com.example.jiraaudit.CheckResult.Outcome.FAIL;
 import static com.example.jiraaudit.CheckResult.Outcome.PASS;
@@ -21,248 +20,187 @@ class PolicyEvaluatorTest {
     private final PolicyEvaluator evaluator = new PolicyEvaluator();
 
     @Test
-    void dayOneChecksOnlyConfiguredFields() throws Exception {
+    void dayThreeChecksItsConfiguredFieldsAndWbsOnly() throws Exception {
         var issue = issue("""
-                {"status":{"name":"In Progress"},"coding":"Started","st":"Not Started",
-                 "attachment":[]}
+                {"status":{"name":"In Progress"},"coding":"Done - On Time",
+                 "download":"Started","attachment":[{"filename":"WBS_scope.xlsx"}]}
                 """);
 
-        var results = evaluator.evaluate(issue, settings(), 1, List.of());
-
-        assertEquals(2, results.size());
-        assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
-        assertTrue(results.stream().noneMatch(result -> result.checkType().equals("ARTIFACT")));
-    }
-
-    @Test
-    void dayThreeChecksFieldsAndOnlyWbs() throws Exception {
-        var issue = issue("""
-                {"status":{"name":"In Progress"},"coding":"In Progress","st":"In Progress",
-                 "attachment":[{"filename":"WBS_scope.xlsx"}]}
-                """);
-
-        var results = evaluator.evaluate(issue, settings(), 3, List.of());
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(3), 3, List.of());
 
         assertEquals(3, results.size());
         assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
         assertEquals(List.of("WBS_"), results.stream()
                 .filter(result -> result.checkType().equals("ARTIFACT"))
-                .map(CheckResult::checkName).toList());
-        assertFalse(evaluator.requiresComments(issue, settings(), 3));
+                .map(CheckResult::ruleKey).toList());
+        assertFalse(evaluator.requiresComments(issue, TestAuditProperties.settings(3), 3));
     }
 
     @Test
-    void dayThreeMissingWbsFailsWithoutCheckingOtherArtifactsOrComments() throws Exception {
+    void dayThreeAcceptsAnyConfiguredValueAndReportsMissingWbs() throws Exception {
         var issue = issue("""
-                {"status":{"name":"In Progress"},"coding":"In Progress","st":"In Progress",
-                 "attachment":[]}
+                {"status":{"name":"In Progress"},"coding":"Not Applicable",
+                 "download":"In Progress","attachment":[]}
                 """);
 
-        var results = evaluator.evaluate(issue, settings(), 3, List.of());
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(3), 3, List.of());
 
-        assertEquals(1, results.stream().filter(result -> result.outcome() == FAIL).count());
-        assertTrue(results.stream().anyMatch(result -> result.checkName().equals("WBS_") &&
-                result.reason().contains("not attached")));
-        assertTrue(results.stream().noneMatch(result -> result.checkName().equals("CWC_")));
-        assertFalse(evaluator.requiresComments(issue, settings(), 3));
+        assertTrue(results.stream().filter(result -> result.checkType().equals("FIELD"))
+                .allMatch(result -> result.outcome() == PASS));
+        CheckResult wbs = result(results, "WBS_");
+        assertEquals(FAIL, wbs.outcome());
+        assertTrue(wbs.reason().contains("cannot be waived"));
     }
 
     @Test
-    void daySevenChecksOnlyExactDaySevenFieldValues() throws Exception {
+    void dayTenPassesForUtRouteWhenAtddFieldIsNotApplicable() throws Exception {
         var issue = issue("""
-                {"status":{"name":"In Progress"},"coding":"Done","st":"Done","attachment":[]}
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"UT_results"},{"filename":"ST_results"}]}
                 """);
 
-        var results = evaluator.evaluate(issue, settings(), 7, List.of());
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(10), 10, List.of());
 
-        assertEquals(2, results.size());
+        assertEquals(9, results.size());
         assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
+        assertEquals(PASS, result(results, "UT_OR_ATDD").outcome());
+        assertFalse(evaluator.requiresComments(issue, TestAuditProperties.settings(10), 10));
     }
 
     @Test
-    void dayTenPassesWhenEveryFieldAndArtifactMatches() throws Exception {
+    void dayTenPassesForAtddRouteWhenUtHasStandardComment() throws Exception {
         var issue = issue("""
-                {"status":{"name":"Done"},"coding":"Done","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
-                   {"filename":"UT_results"},{"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
-                """);
-
-        var results = evaluator.evaluate(issue, settings(), 10, List.of());
-
-        assertEquals(7, results.size());
-        assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
-        assertFalse(evaluator.requiresComments(issue, settings(), 10));
-    }
-
-    @Test
-    void dayTenFieldPassesWhenAnyConfiguredValueMatches() throws Exception {
-        AuditProperties base = settings();
-        Map<String, AuditProperties.FieldRule> customFields = new LinkedHashMap<>(base.fields());
-        customFields.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding",
-                Map.of(1, List.of("Started"), 3, List.of("In Progress"), 7, List.of("Done"),
-                        10, List.of("Done - On Time", "Not Applicable"))));
-        AuditProperties custom = new AuditProperties(base.jira(), base.jql(), base.runDay(),
-                base.pageSize(), customFields, base.artifacts(), base.report());
-        var issue = issue("""
-                {"status":{"name":"Done"},"coding":"Not Applicable","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
-                   {"filename":"UT_results"},{"filename":"ATDD_evidence"},
-                   {"filename":"ST_results"}]}
-                """);
-
-        CheckResult coding = evaluator.evaluate(issue, custom, 10, List.of()).stream()
-                .filter(result -> result.checkName().equals("Coding Status"))
-                .findFirst().orElseThrow();
-
-        assertEquals(PASS, coding.outcome());
-        assertEquals("Done - On Time | Not Applicable", coding.expected());
-        assertEquals("Not Applicable", coding.actual());
-    }
-
-    @Test
-    void missingWbsAlwaysFailsEvenWhenACommentClaimsNotApplicable() throws Exception {
-        var issue = issue("""
-                {"status":{"name":"Done"},"coding":"Done","st":"Done",
-                 "attachment":[{"filename":"CWC_review"},{"filename":"UT_results"},
-                   {"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
-                """);
-
-        var results = evaluator.evaluate(issue, settings(), 10,
-                List.of(comment("9", "WBS Not Applicable", "2026-10-25T08:00:00Z")));
-
-        assertTrue(results.stream().anyMatch(result -> result.checkName().equals("WBS_") &&
-                result.outcome() == FAIL));
-        assertFalse(evaluator.requiresComments(issue, settings(), 10));
-    }
-
-    @Test
-    void missingCwcPassesOnlyWithNoCodeChangesAndNewestMatchingComment() throws Exception {
-        var issue = issue("""
-                {"status":{"name":"Done"},"coding":"No Code Changes","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"UT_results"},
-                   {"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"ATDD_results"},{"filename":"ST_results"}]}
                 """);
         List<JiraClient.JiraComment> comments = List.of(
-                comment("new", "Unrelated newest comment", "2026-10-25T09:00:00Z"),
-                adfComment("match", "CWC", "Not Applicable", "2026-10-25T08:00:00Z"));
+                comment("new", "UT Not Applicable", "2026-10-25T09:00:00Z"));
 
-        assertTrue(evaluator.requiresComments(issue, settings(), 10));
-        CheckResult cwc = evaluator.evaluate(issue, settings(), 10, comments).stream()
-                .filter(result -> result.checkName().equals("CWC_")).findFirst().orElseThrow();
-
-        assertEquals(PASS, cwc.outcome());
-        assertTrue(cwc.actual().contains("comment=match"));
-        assertTrue(cwc.actual().contains("Coding Status=No Code Changes"));
-    }
-
-    @Test
-    void missingCwcFailsWithoutBothRequiredEvidenceParts() throws Exception {
-        var noComment = issue("""
-                {"status":{"name":"Done"},"coding":"No Code Changes","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"UT_results"},
-                   {"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
-                """);
-        CheckResult commentFailure = evaluator.evaluate(noComment, settings(), 10, List.of()).stream()
-                .filter(result -> result.checkName().equals("CWC_")).findFirst().orElseThrow();
-        assertEquals(FAIL, commentFailure.outcome());
-        assertTrue(commentFailure.reason().contains("comments do not contain"));
-
-        var wrongField = issue("""
-                {"status":{"name":"Done"},"coding":"Done","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"UT_results"},
-                   {"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
-                """);
-        CheckResult fieldFailure = evaluator.evaluate(wrongField, settings(), 10,
-                        List.of(comment("1", "cwc not applicable", "2026-10-25T08:00:00Z"))).stream()
-                .filter(result -> result.checkName().equals("CWC_")).findFirst().orElseThrow();
-        assertEquals(FAIL, fieldFailure.outcome());
-        assertTrue(fieldFailure.reason().contains("Coding Status must be No Code Changes"));
-    }
-
-    @Test
-    void missingUtAtddAndStPassWithConfiguredNotApplicableEvidence() throws Exception {
-        var issue = issue("""
-                {"status":{"name":"Done"},"coding":"Done","st":"Not Applicable",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"}]}
-                """);
-        var comment = comment("10", "UT Not Applicable; ATDD NOT APPLICABLE; ST Not Applicable",
-                "2026-10-25T10:00:00Z");
-
-        var results = evaluator.evaluate(issue, settings(), 10, List.of(comment));
+        assertTrue(evaluator.requiresComments(issue, TestAuditProperties.settings(10), 10));
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(10), 10, comments);
 
         assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
-        assertEquals(3, results.stream().filter(result -> result.checkType().equals("ARTIFACT") &&
-                result.actual().contains("attachment=<missing>")).count());
+        assertTrue(result(results, "UT_").actual().contains("comment=new"));
     }
 
     @Test
-    void dayAfterTenUsesTheDayTenPolicy() throws Exception {
-        var issue = issue("""
-                {"status":{"name":"Done"},"coding":"Done","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
-                   {"filename":"UT_results"},{"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
+    void exactlyOneOfUtAndAtddMustBeAttached() throws Exception {
+        var both = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"UT_results"},
+                 {"filename":"ATDD_results"},{"filename":"ST_results"}]}
+                """);
+        var neither = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"ST_results"}]}
                 """);
 
-        var results = evaluator.evaluate(issue, settings(), 12, List.of());
+        assertEquals(FAIL, result(evaluator.evaluate(both, TestAuditProperties.settings(10), 10,
+                List.of()), "UT_OR_ATDD").outcome());
+        assertEquals(FAIL, result(evaluator.evaluate(neither, TestAuditProperties.settings(10), 10,
+                List.of(comment("1", "UT Not Applicable", "2026-10-25T09:00:00Z"))),
+                "UT_OR_ATDD").outcome());
+    }
 
-        assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
-        assertEquals(7, results.size());
+    @Test
+    void notApplicableFieldRequiresItsArtifactToBeAbsentWithoutAComment() throws Exception {
+        var absent = issue("""
+                {"status":{"name":"Done"},"coding":"Not Applicable","st":"Not Applicable",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"UT_results"}]}
+                """);
+        var wronglyAttached = issue("""
+                {"status":{"name":"Done"},"coding":"Not Applicable","st":"Not Applicable",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"UT_results"}]}
+                """);
+
+        var absentResults = evaluator.evaluate(absent, TestAuditProperties.settings(10), 10, List.of());
+        assertEquals(PASS, result(absentResults, "CWC_").outcome());
+        assertEquals(PASS, result(absentResults, "ST_").outcome());
+        assertEquals(PASS, result(absentResults, "ATDD_").outcome());
+        assertFalse(evaluator.requiresComments(absent, TestAuditProperties.settings(10), 10));
+
+        CheckResult cwc = result(evaluator.evaluate(wronglyAttached,
+                TestAuditProperties.settings(10), 10, List.of()), "CWC_");
+        assertEquals(FAIL, cwc.outcome());
+        assertTrue(cwc.reason().contains("must not be attached"));
+    }
+
+    @Test
+    void missingApplicableArtifactNeedsItsConfiguredComment() throws Exception {
+        var issue = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"UT_results"},{"filename":"ST_results"}]}
+                """);
+
+        CheckResult missing = result(evaluator.evaluate(issue, TestAuditProperties.settings(10), 10,
+                List.of()), "CWC_");
+        assertEquals(FAIL, missing.outcome());
+        assertTrue(missing.reason().contains("CWC Not Applicable"));
+
+        List<JiraClient.JiraComment> newestFirst = List.of(
+                comment("latest", "unrelated", "2026-10-25T10:00:00Z"),
+                adfComment("match", "CWC", "Not Applicable", "2026-10-25T09:00:00Z"),
+                comment("old", "CWC Not Applicable", "2026-10-24T10:00:00Z"));
+        CheckResult waived = result(evaluator.evaluate(issue, TestAuditProperties.settings(10), 10,
+                newestFirst), "CWC_");
+        assertEquals(PASS, waived.outcome());
+        assertTrue(waived.actual().contains("comment=match"));
+    }
+
+    @Test
+    void aConfiguredFieldMustMatchOneOfItsPossibleValues() throws Exception {
+        var issue = issue("""
+                {"status":{"name":"In Progress"},"coding":"Blocked",
+                 "download":"Started","attachment":[{"filename":"WBS_scope"}]}
+                """);
+
+        CheckResult coding = result(evaluator.evaluate(issue,
+                TestAuditProperties.settings(3), 3, List.of()), "coding-status");
+
+        assertEquals(FAIL, coding.outcome());
+        assertEquals("In Progress | Done - On Time | Not Applicable", coding.expected());
+        assertEquals("Blocked", coding.actual());
     }
 
     @Test
     void missingConfiguredFieldFailsAndUnassignedUserIsReported() throws Exception {
         var issue = issue("""
-                {"assignee":null,"status":{"name":"In Progress"},"st":"Not Started","attachment":[]}
+                {"assignee":null,"status":{"name":"In Progress"},
+                 "download":"Started","attachment":[{"filename":"WBS_scope"}]}
                 """);
 
-        var results = evaluator.evaluate(issue, settings(), 1, List.of());
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(3), 3, List.of());
 
-        assertTrue(results.stream().anyMatch(result -> result.checkName().equals("Coding Status") &&
-                result.outcome() == FAIL && result.actual().equals("<not returned>")));
-        assertEquals("Unassigned", results.get(0).issue().assigneeName());
+        CheckResult coding = result(results, "coding-status");
+        assertEquals(FAIL, coding.outcome());
+        assertEquals("<not returned>", coding.actual());
+        assertEquals("Unassigned", coding.issue().assigneeName());
     }
 
     @Test
     void rejectsMissingEssentialJiraMetadata() throws Exception {
         var fields = MAPPER.readTree("""
-                {"summary":"Story","assignee":null,"coding":"Started","st":"Not Started",
-                 "attachment":[]}
+                {"summary":"Story","assignee":null,"coding":"In Progress",
+                 "download":"Started","attachment":[]}
                 """);
         var issue = new JiraClient.JiraIssue("10002", "PAY-102", fields);
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> evaluator.evaluate(issue, settings(), 1, List.of()));
+                () -> evaluator.evaluate(issue, TestAuditProperties.settings(3), 3, List.of()));
 
         assertTrue(error.getMessage().contains("status"));
     }
 
-    private AuditProperties settings() {
-        Map<String, AuditProperties.FieldRule> fields = new LinkedHashMap<>();
-        fields.put("coding-status", new AuditProperties.FieldRule("Coding Status", "coding",
-                Map.of(1, List.of("Started"), 3, List.of("In Progress"), 7, List.of("Done"),
-                        10, List.of("Done", "No Code Changes"))));
-        fields.put("st-status", new AuditProperties.FieldRule("ST Status", "st",
-                Map.of(1, List.of("Not Started"), 3, List.of("In Progress"), 7, List.of("Done"),
-                        10, List.of("Done", "Not Applicable"))));
-
-        Map<String, AuditProperties.MissingArtifactRule> exceptions = new LinkedHashMap<>();
-        exceptions.put("CWC_", new AuditProperties.MissingArtifactRule(
-                "coding-status", List.of("No Code Changes"), "CWC Not Applicable"));
-        exceptions.put("UT_", new AuditProperties.MissingArtifactRule(
-                null, null, "UT Not Applicable"));
-        exceptions.put("ATDD_", new AuditProperties.MissingArtifactRule(
-                null, null, "ATDD Not Applicable"));
-        exceptions.put("ST_", new AuditProperties.MissingArtifactRule(
-                "st-status", List.of("Not Applicable"), "ST Not Applicable"));
-
-        return new AuditProperties(
-                new AuditProperties.Jira("https://jira.company.example", "test-pat"),
-                "project = TEST", 1, 100, fields,
-                new AuditProperties.Artifacts(Map.of(
-                        1, List.of(), 3, List.of("WBS_"), 7, List.of(),
-                        10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_")), exceptions),
-                new AuditProperties.Report("target/reports", true, true));
+    private CheckResult result(List<CheckResult> results, String ruleKey) {
+        return results.stream().filter(result -> result.ruleKey().equals(ruleKey))
+                .findFirst().orElseThrow();
     }
 
     private JiraClient.JiraIssue issue(String json) throws Exception {
@@ -275,23 +213,18 @@ class PolicyEvaluatorTest {
         return new JiraClient.JiraIssue("10002", "PAY-102", fields);
     }
 
-    private JiraClient.JiraComment comment(String id, String text, String created) throws Exception {
-        return new JiraClient.JiraComment(id, MAPPER.getNodeFactory().textNode(text), Instant.parse(created));
+    private JiraClient.JiraComment comment(String id, String text, String created) {
+        return new JiraClient.JiraComment(id, MAPPER.getNodeFactory().textNode(text),
+                Instant.parse(created));
     }
 
     private JiraClient.JiraComment adfComment(String id, String first, String second,
                                                String created) throws Exception {
-        JsonNodeBuilder body = new JsonNodeBuilder(first, second);
-        return new JiraClient.JiraComment(id, body.value(), Instant.parse(created));
-    }
-
-    private record JsonNodeBuilder(String first, String second) {
-        com.fasterxml.jackson.databind.JsonNode value() throws Exception {
-            return MAPPER.readTree("""
-                    {"type":"doc","content":[{"type":"paragraph","content":[
-                      {"type":"text","text":"%s"},{"type":"text","text":"%s"}
-                    ]}]}
-                    """.formatted(first, second));
-        }
+        JsonNode body = MAPPER.readTree("""
+                {"type":"doc","content":[{"type":"paragraph","content":[
+                  {"type":"text","text":"%s"},{"type":"text","text":"%s"}
+                ]}]}
+                """.formatted(first, second));
+        return new JiraClient.JiraComment(id, body, Instant.parse(created));
     }
 }

@@ -11,16 +11,17 @@ public record AuditProperties(
         String jql,
         Integer runDay,
         Integer pageSize,
-        Map<String, FieldRule> fields,
+        Map<Integer, Checkpoint> checkpoints,
         Artifacts artifacts,
         Report report
 ) {
     public record Jira(String baseUrl, String personalAccessToken) { }
-    public record FieldRule(String label, String jiraField,
-                            Map<Integer, List<String>> days) { }
-    public record Artifacts(Map<Integer, List<String>> requiredByDay,
-                            Map<String, MissingArtifactRule> missingExceptions) { }
-    public record MissingArtifactRule(String fieldRule, List<String> fieldValues,
-                                      String commentContains) { }
+    public record Checkpoint(Map<String, FieldRule> fields) { }
+    public record FieldRule(String label, String jiraField, List<String> acceptedValues) { }
+    public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) { }
+    public record Day10Artifacts(String wbsPrefix, ArtifactRule cwc, ArtifactRule ut,
+                                 ArtifactRule atdd, ArtifactRule st) { }
+    public record ArtifactRule(String prefix, String fieldRule,
+                               List<String> notApplicableValues, String commentContains) { }
     public record Report(String directory, Boolean failOnViolations, Boolean failOnEmpty) { }
 }

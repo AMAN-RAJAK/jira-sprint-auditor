@@ -36,7 +36,8 @@ public class AuditRunner implements ApplicationRunner {
 
         Set<String> requestedFields = new LinkedHashSet<>(
                 List.of("summary", "assignee", "status", "attachment"));
-        properties.fields().values().forEach(rule -> requestedFields.add(rule.jiraField()));
+        properties.checkpoints().get(policyDay).fields().values()
+                .forEach(rule -> requestedFields.add(rule.jiraField()));
 
         System.out.printf("Jira audit | Declared Day %d | Policy Day %d | JQL: %s%n",
                 runDay, policyDay, properties.jql());

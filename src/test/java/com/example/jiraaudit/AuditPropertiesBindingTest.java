@@ -75,9 +75,11 @@ class AuditPropertiesBindingTest {
             AuditProperties properties = context.getBean(AuditProperties.class);
             assertEquals(3, properties.runDay());
             assertEquals("test-pat", properties.jira().personalAccessToken());
-            assertEquals(List.of("WBS_"), properties.artifacts().requiredByDay().get(3));
+            assertEquals(List.of("Started", "In Progress", "Done - On Time", "Not Applicable"),
+                    properties.checkpoints().get(3).fields().get("download").acceptedValues());
+            assertEquals("WBS_", properties.artifacts().day3WbsPrefix());
             assertEquals("CWC Not Applicable",
-                    properties.artifacts().missingExceptions().get("CWC_").commentContains());
+                    properties.artifacts().day10().cwc().commentContains());
             assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties));
         });
     }

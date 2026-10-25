@@ -11,14 +11,13 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,11 +28,11 @@ class AuditRunnerTest {
     Path tempDirectory;
 
     @Test
-    void dayThreeRunsJqlChecksOnlyWbsAndWritesOneGridWorkbook() throws Exception {
+    void dayThreeRequestsOnlyItsFieldsAndWritesOneGridWorkbook() throws Exception {
         AuditProperties properties = properties(3, true);
         var fields = MAPPER.readTree("""
                 {"summary":"Ship audit","assignee":{"displayName":"Asha Rao","name":"arao"},
-                 "status":{"name":"In Progress"},"coding":"In Progress","st":"In Progress",
+                 "status":{"name":"In Progress"},"coding":"In Progress","download":"Started",
                  "attachment":[{"filename":"WBS_scope.xlsx"}]}
                 """);
         AtomicReference<Set<String>> requested = new AtomicReference<>();
@@ -46,10 +45,10 @@ class AuditRunnerTest {
         runner.run(null);
 
         assertEquals(0, runner.exitCode());
-        assertTrue(requested.get().containsAll(Set.of(
-                "summary", "assignee", "status", "attachment", "coding", "st")));
-        Path report = onlyWorkbook();
-        try (InputStream input = Files.newInputStream(report);
+        assertEquals(Set.of("summary", "assignee", "status", "attachment", "coding", "download"),
+                requested.get());
+        assertFalse(requested.get().contains("st"));
+        try (InputStream input = Files.newInputStream(onlyWorkbook());
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {
             assertEquals(1, workbook.getNumberOfSheets());
             assertEquals("Audit Results", workbook.getSheetAt(0).getSheetName());
@@ -58,13 +57,14 @@ class AuditRunnerTest {
     }
 
     @Test
-    void dayTenFetchesCommentsOnlyAfterExceptionEligibleArtifactIsMissing() throws Exception {
+    void dayTenFetchesCommentsOnlyWhenMissingArtifactNeedsEvidence() throws Exception {
         AuditProperties properties = properties(10, true);
         var fields = MAPPER.readTree("""
-                {"summary":"No code story","assignee":{"displayName":"Asha Rao"},
-                 "status":{"name":"Done"},"coding":"No Code Changes","st":"Done",
-                 "attachment":[{"filename":"WBS_scope"},{"filename":"UT_results"},
-                   {"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
+                {"summary":"ATDD story","assignee":{"displayName":"Asha Rao"},
+                 "status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"ATDD_evidence"},
+                 {"filename":"ST_results"}]}
                 """);
         AtomicInteger commentCalls = new AtomicInteger();
         JiraClient client = new JiraClient() {
@@ -77,7 +77,7 @@ class AuditRunnerTest {
             public List<JiraComment> getCommentsNewestFirst(String issueKey, int pageSize) {
                 commentCalls.incrementAndGet();
                 return List.of(new JiraComment("9", MAPPER.getNodeFactory()
-                        .textNode("CWC Not Applicable"), Instant.parse("2026-10-25T08:00:00Z")));
+                        .textNode("UT Not Applicable"), Instant.parse("2026-10-25T08:00:00Z")));
             }
         };
         AuditRunner runner = runner(properties, client);
@@ -119,7 +119,7 @@ class AuditRunnerTest {
         AuditProperties properties = properties(3, true);
         var fields = MAPPER.readTree("""
                 {"summary":"Missing WBS","assignee":null,"status":{"name":"In Progress"},
-                 "coding":"Started","st":"In Progress","attachment":[]}
+                 "coding":"Blocked","download":"Started","attachment":[]}
                 """);
         JiraClient client = (jql, requestedFields, pageSize) ->
                 List.of(new JiraClient.JiraIssue("10003", "PAY-103", fields));
@@ -133,6 +133,7 @@ class AuditRunnerTest {
             var row = workbook.getSheet("Audit Results").getRow(1);
             assertEquals("FAIL", row.getCell(6).getStringCellValue());
             assertTrue(row.getCell(7).getStringCellValue().contains("WBS_"));
+            assertTrue(row.getCell(7).getStringCellValue().contains("Coding Status"));
         }
     }
 
@@ -160,28 +161,11 @@ class AuditRunnerTest {
     }
 
     private AuditProperties properties(Integer runDay, boolean failOnEmpty) {
-        Map<String, AuditProperties.FieldRule> fields = new LinkedHashMap<>();
-        fields.put("coding-status", new AuditProperties.FieldRule("Coding Status", "coding",
-                Map.of(1, List.of("Started"), 3, List.of("In Progress"), 7, List.of("Done"),
-                        10, List.of("Done", "No Code Changes"))));
-        fields.put("st-status", new AuditProperties.FieldRule("ST Status", "st",
-                Map.of(1, List.of("Not Started"), 3, List.of("In Progress"), 7, List.of("Done"),
-                        10, List.of("Done", "Not Applicable"))));
-
-        Map<String, AuditProperties.MissingArtifactRule> exceptions = new LinkedHashMap<>();
-        exceptions.put("CWC_", new AuditProperties.MissingArtifactRule(
-                "coding-status", List.of("No Code Changes"), "CWC Not Applicable"));
-        exceptions.put("UT_", new AuditProperties.MissingArtifactRule(null, null, "UT Not Applicable"));
-        exceptions.put("ATDD_", new AuditProperties.MissingArtifactRule(null, null, "ATDD Not Applicable"));
-        exceptions.put("ST_", new AuditProperties.MissingArtifactRule(
-                "st-status", List.of("Not Applicable"), "ST Not Applicable"));
-
-        return new AuditProperties(
-                new AuditProperties.Jira("https://jira.company.example", "test-pat"),
-                "project = PAY AND sprint = 123", runDay, 100, fields,
-                new AuditProperties.Artifacts(Map.of(
-                        1, List.of(), 3, List.of("WBS_"), 7, List.of(),
-                        10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_")), exceptions),
+        AuditProperties base = TestAuditProperties.settings(
+                runDay == null ? 3 : runDay,
                 new AuditProperties.Report(tempDirectory.toString(), true, failOnEmpty));
+        if (runDay != null) return base;
+        return new AuditProperties(base.jira(), base.jql(), null, base.pageSize(),
+                base.checkpoints(), base.artifacts(), base.report());
     }
 }

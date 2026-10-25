@@ -1,114 +1,156 @@
 # Jira Sprint Auditor
 
-A small Java 21 / Spring Boot command-line application that:
+A Java 21 / Spring Boot command-line application for checking Jira sprint-story
+compliance on Day 3 or Day 10. It runs one configured JQL query, audits every
+returned ticket, and creates an Excel `.xlsx` report with one row per ticket.
 
-1. runs one configured JQL query;
-2. checks configured Jira field values for the declared sprint day;
-3. checks only the artifacts required on that day;
-4. checks newest Jira comments when a missing artifact has a configured Not Applicable rule; and
-5. writes one Excel `.xlsx` grid with one row per Jira ticket.
+The application is read-only. It does not update Jira.
 
-The application is read-only. It never changes a Jira ticket.
+## What it does
 
-## Audit behavior
+For each ticket returned by the configured JQL, the application:
 
-The sprint day is always supplied explicitly. No dates, sprint calendars, or time zones are used to select policy.
+1. records the Jira ID, key, summary, assignee, and workflow status;
+2. checks the fields configured for the selected checkpoint;
+3. checks the checkpoint's required attachment filename prefixes;
+4. reads newest-first Jira comments only when a missing Day-10 artifact needs
+   comment evidence; and
+5. writes an overall `PASS` or `FAIL` and detailed remarks to a grid-style Excel
+   report.
 
-| Declared day | Checks performed |
+The checkpoint is supplied explicitly as `3` or `10`. There is no date,
+sprint-calendar, or time-zone calculation.
+
+## Audit rules
+
+### Day 3
+
+- Only the fields under `audit.checkpoints.3.fields` are checked.
+- Each field passes when its Jira value matches any configured
+  `accepted-values` entry.
+- An attachment whose filename starts with the configured WBS prefix is
+  mandatory.
+- CWC, UT, ATDD, and ST artifacts are not checked on Day 3.
+
+### Day 10
+
+- Only the fields under `audit.checkpoints.10.fields` are checked.
+- Each field passes when its Jira value matches any configured
+  `accepted-values` entry.
+- WBS is always mandatory and cannot be waived by a comment.
+- CWC, ST, and ATDD are linked to configured Day-10 field rules, each with its
+  own configurable Not Applicable values.
+- Exactly one of UT or ATDD must be attached. Both attached or both absent is a
+  failure, even when comments exist.
+
+The Day-10 artifact decisions are:
+
+| Artifact | Rule |
 |---|---|
-| Day 1 | Configured Day-1 field values only |
-| Day 3 | Configured Day-3 field values and `WBS_` attachment |
-| Day 7 | Configured Day-7 field values only |
-| Day 10 or later | Day-10 field values and every configured Day-10 artifact |
+| WBS | Must be attached |
+| CWC | If Coding Status is configured as Not Applicable, CWC must be absent; otherwise CWC attachment or the configured CWC comment is required |
+| ST | If ST Status is configured as Not Applicable, ST must be absent; otherwise ST attachment or the configured ST comment is required |
+| ATDD | If ATDD Status is configured as Not Applicable, ATDD must be absent; otherwise ATDD attachment or the configured ATDD comment is required |
+| UT | Has no mapped status field; it must be attached or have the configured UT comment |
 
-Each field must define expected values for Days 1, 3, 7, and 10. Multiple values on one day mean that any one of those values is acceptable.
+This permits the two final attachment paths requested by the policy:
 
-### Missing Day-10 artifacts
+- WBS + CWC + UT, with ATDD omitted using ATDD field-level Not Applicable
+  evidence or the configured ATDD comment; or
+- WBS + CWC + ATDD, with UT omitted using the configured UT comment.
 
-A matching attachment filename prefix passes immediately. The following controls are mandatory:
+ST remains an independent rule in both paths: attach it when applicable, or
+omit it when its mapped field is Not Applicable. If an applicable CWC, ST, or
+ATDD artifact is absent, its configured standard comment can provide the
+missing-artifact evidence.
 
-| Artifact | Evidence required when attachment is missing |
-|---|---|
-| `WBS_` | No exception; the attachment is required |
-| `CWC_` | Coding Status = `No Code Changes` **and** a comment containing `CWC Not Applicable` |
-| `UT_` | A comment containing `UT Not Applicable` |
-| `ATDD_` | A comment containing `ATDD Not Applicable` |
-| `ST_` | ST Status = `Not Applicable` **and** a comment containing `ST Not Applicable` |
-
-The application first identifies missing artifacts. It requests comments only when at least one missing artifact has an exception rule. Jira comments are loaded completely using the Jira Server/Data Center comments endpoint in newest-first order. Matching is case-insensitive and stops at the newest matching comment.
-
-Because calendar logic is intentionally absent, comment matching does not determine whether a comment belongs to the current sprint. If that distinction is required, use a sprint-specific phrase or add a separate comment-age rule later.
+Field comparisons, attachment-prefix comparisons, and comment-phrase searches
+are case-insensitive. Jira comments are requested in newest-first order, all
+pages are loaded, and the newest matching comment is recorded in the evidence.
 
 ## Excel output
 
-Each run creates:
+Each run creates a file like:
 
 ```text
-reports/jira-audit-dayN-<UTC timestamp>-<run-id>.xlsx
+reports/jira-audit-day10-20261025-063000-000-a1b2c3d4.xlsx
 ```
 
-The workbook has one sheet named `Audit Results` and one row per JQL ticket:
+The `Audit Results` sheet contains one row per JQL ticket:
 
-| Column | Meaning |
+| Column | Content |
 |---|---|
-| Run Day | Explicit execution day |
-| Jira ID | Jira's internal numeric ID |
-| Jira Key | Clickable ticket key |
+| Run Day | `3` or `10` |
+| Jira ID | Jira's internal ID |
+| Jira Key | Clickable issue key |
 | Summary | Ticket summary |
 | Assignee | Jira display name or `Unassigned` |
-| Jira Status | Ticket workflow status |
+| Jira Status | Jira workflow status |
 | Audit Result | `PASS` or `FAIL` |
-| Remarks | All failure reasons, expected/actual values, or accepted Not Applicable evidence |
+| Remarks | Failure reasons with expected/actual values, or accepted Not Applicable evidence |
 
-## Prerequisites
+## Required configuration
 
-- Java 21
-- Maven 3.9+
-- Jira Server/Data Center with Personal Access Token support (Jira 8.14+)
-- A Personal Access Token created from the Jira user profile
-- Permission for that Jira user to view every ticket, field, attachment name, and comment returned by the JQL
-- HTTPS access from the machine running this application
-
-The application sends only `Authorization: Bearer <personal-access-token>`.
-No email, username, password, or Basic authentication is used. The audit sees
-only issues and comments that the PAT owner is permitted to view.
-
-If Jira is hosted below a context path, include it in the base URL, for example
-`https://jira.company.example/jira`. If the internal Jira certificate uses a
-private company CA, that CA must be trusted by the Java runtime; the application
-does not disable TLS certificate validation.
-
-## Configuration
-
-Copy the sample policy:
+Copy the template into the project root:
 
 ```bash
 cp config/company-audit.example.yml company-audit.yml
 ```
 
-`company-audit.yml` is loaded automatically when the working directory is the
-project root. It contains the JQL, field IDs, expected day values, and artifact
-rules; the base URL and PAT still come from environment variables.
+Configure these company-specific values in `company-audit.yml`:
 
-Edit `company-audit.yml` and configure:
+- `audit.jql`: the complete story scope for the audit;
+- `audit.checkpoints.3.fields`: Day-3 Jira field IDs and possible values;
+- `audit.checkpoints.10.fields`: Day-10 Jira field IDs and possible values;
+- `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename prefix;
+- Day-10 WBS, CWC, UT, ATDD, and ST filename prefixes;
+- the Day-10 field-rule mapping for CWC, ATDD, and ST;
+- each mapped artifact's configurable `not-applicable-values`;
+- each optional artifact's standard `comment-contains` phrase; and
+- report output and failure behavior.
 
-- `audit.jql`: the complete list of tickets to audit;
-- every `jira-field`: use the Jira REST field ID, such as `customfield_10101`;
-- expected values for Days 1, 3, 7, and 10;
-- any additional Day-10 artifact filename prefixes your company requires;
-- report directory and failure behavior.
+Day 3 and Day 10 field lists are independent. A field may be configured on one
+checkpoint and omitted from the other. Multiple accepted values use OR logic:
 
-The named `WBS_`, `CWC_`, `UT_`, `ATDD_`, and `ST_` prefixes and the four
-Not Applicable rules shown in the sample are mandatory. The CWC rule uses the
-`coding-status` field-rule key and the ST rule uses `st-status`. These artifact
-exception conditions do not restrict the normal Day-10 accepted-value lists.
-Additional Day-10 artifact prefixes are allowed, but they cannot be waived.
+```yaml
+accepted-values: [Done - On Time, Not Done, Not Applicable]
+```
 
-The sample file is [`config/company-audit.example.yml`](config/company-audit.example.yml).
+The application requires exactly the Day `3` and Day `10` checkpoint sections.
+Only the selected day's Jira fields are requested and checked.
 
-Do not commit `company-audit.yml`, `.env`, or personal access tokens. The supplied `.gitignore` excludes the local company file and report directory.
+See the complete annotated template at
+[`config/company-audit.example.yml`](config/company-audit.example.yml).
 
-### Find Jira custom-field IDs
+### Jira credentials
+
+This project targets self-hosted Jira Server/Data Center and uses a Personal
+Access Token generated from the Jira user profile. It sends:
+
+```text
+Authorization: Bearer <personal-access-token>
+```
+
+No Jira Cloud email/API-token authentication and no Basic authentication are
+used. Set credentials outside the company policy file:
+
+```bash
+export JIRA_BASE_URL='https://jira.company.example/jira'
+export JIRA_PERSONAL_ACCESS_TOKEN='your-profile-personal-access-token'
+```
+
+`JIRA_ACCESS_TOKEN` is supported as an alias. Include Jira's context path in
+the base URL when applicable. The URL must use HTTPS, and the Java runtime must
+trust the company's TLS certificate authority.
+
+The PAT owner needs permission to view all JQL tickets, configured fields,
+attachment names, and comments. Keep `company-audit.yml`, `.env`, generated
+reports, and tokens out of version control; the supplied `.gitignore` excludes
+the local company file and report directory.
+
+### Finding custom-field IDs
+
+Use the returned field `id` such as `customfield_10101`, not the display label:
 
 ```bash
 curl --header "Authorization: Bearer $JIRA_PERSONAL_ACCESS_TOKEN" \
@@ -116,59 +158,29 @@ curl --header "Authorization: Bearer $JIRA_PERSONAL_ACCESS_TOKEN" \
   "$JIRA_BASE_URL/rest/api/2/field"
 ```
 
-Use the returned field `id`, not its display label.
+## Build and run
 
-## Build
+Requirements: Java 21, Maven 3.9+, HTTPS access to Jira, and Jira Server/Data
+Center with Personal Access Token support.
 
 ```bash
 mvn clean test
 mvn clean package
 ```
 
-The runnable jar is created at:
-
-```text
-target/jira-sprint-auditor-1.0.0.jar
-```
-
-## Run
-
-Set credentials outside YAML:
+Run one checkpoint explicitly:
 
 ```bash
-export JIRA_BASE_URL='https://jira.company.example/jira'
-export JIRA_PERSONAL_ACCESS_TOKEN='your-profile-personal-access-token'
+java -jar target/jira-sprint-auditor-1.0.0.jar --audit.run-day=3
+java -jar target/jira-sprint-auditor-1.0.0.jar --audit.run-day=10
 ```
 
-`JIRA_ACCESS_TOKEN` is also accepted as an alias for
-`JIRA_PERSONAL_ACCESS_TOKEN`.
+Any other day is rejected.
 
-Then choose the checkpoint explicitly:
+### IntelliJ IDEA
 
-```bash
-# Day 1
-java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --audit.run-day=1
-
-# Day 3
-java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --audit.run-day=3
-
-# Day 7
-java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --audit.run-day=7
-
-# Day 10 final audit
-java -jar target/jira-sprint-auditor-1.0.0.jar \
-  --audit.run-day=10
-```
-
-Days after 10 reuse the Day-10 policy, preserving the final-check behavior.
-
-### Run from IntelliJ IDEA
-
-Run `JiraAuditApplication.main()` with the project root as the working
-directory. In the run configuration, set:
+Run `JiraAuditApplication.main()` with the repository root as the working
+directory. Add these environment variables to the run configuration:
 
 ```text
 JIRA_BASE_URL=https://jira.company.example/jira
@@ -176,20 +188,23 @@ JIRA_PERSONAL_ACCESS_TOKEN=<your PAT>
 AUDIT_RUN_DAY=3
 ```
 
-Alternatively, put `--audit.run-day=3` in **Program arguments**. Before running,
-make sure `company-audit.yml` exists in the project root and contains your real
-JQL, Jira custom-field IDs, and expected values.
+Use `AUDIT_RUN_DAY=10` for the final check. You may instead pass
+`--audit.run-day=3` or `--audit.run-day=10` in Program arguments. Ensure the
+edited `company-audit.yml` exists in the repository root.
 
-## Results and exit codes
+## Results and exit behavior
 
-- Exit `0`: the run completed and all tickets passed, or `fail-on-violations` is disabled.
-- Exit `2`: at least one ticket failed and `fail-on-violations` is enabled.
-- Startup/runtime error: invalid configuration, authentication failure, invalid JQL, incomplete Jira pagination, unreadable required comments, or an empty result when `fail-on-empty` is enabled.
+- Exit `0`: the run completed and every ticket passed, or
+  `fail-on-violations` is disabled.
+- Exit `2`: at least one ticket failed while `fail-on-violations` is enabled.
+- The run stops with an error for invalid configuration, authentication/JQL
+  errors, incomplete Jira pagination, malformed Jira data, or an empty result
+  when `fail-on-empty` is enabled.
 
 ## Deliberately simple scope
 
-- Only tickets returned by the configured JQL are audited.
-- Linked tickets, subtasks, hierarchy, external files, and attachment contents are not followed.
-- Artifact checks use attachment filename prefixes only.
-- The app does not schedule itself, update Jira, send notifications, or store history.
-- The generated workbook is the audit snapshot for that run.
+- Only tickets returned directly by the JQL are audited.
+- Artifact contents are not inspected; checks use attachment filename prefixes.
+- The application does not schedule itself, modify Jira, send notifications,
+  or keep audit history.
+- The generated `.xlsx` workbook is the audit snapshot for that run.
