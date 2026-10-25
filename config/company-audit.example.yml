@@ -56,6 +56,11 @@ audit:
           jira-field: customfield_10105
           accepted-values: '__NON_EMPTY__'
 
+      # Every directly linked issue of this type must have one of these statuses.
+      linked-bugs:
+        issue-type: Bug
+        resolved-statuses: 'Resolved$Closed$Done'
+
   artifacts:
     # Day 3 has exactly one artifact rule: WBS must be attached.
     day-3-wbs-prefix: WBS_

@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import static com.example.jiraaudit.CheckResult.Outcome.FAIL;
 import static com.example.jiraaudit.CheckResult.Outcome.PASS;
@@ -53,6 +55,9 @@ public class PolicyEvaluator {
 
         addArtifactChecks(results, details, fields, properties, policyDay,
                 commentsNewestFirst == null ? List.of() : commentsNewestFirst);
+        if (policyDay == 10) {
+            addLinkedBugChecks(results, details, fields, checkpoint.linkedBugs());
+        }
         return results;
     }
 
@@ -236,6 +241,99 @@ public class PolicyEvaluator {
         return new CheckResult(details, "ARTIFACT", prefix, prefix, "attachment",
                 "Valid Jira attachment data", "<not returned>", FAIL,
                 "Jira attachment data was not returned or is malformed");
+    }
+
+    private static void addLinkedBugChecks(List<CheckResult> results,
+                                           IssueDetails details,
+                                           JsonNode fields,
+                                           AuditProperties.LinkedBugRule rule) {
+        JsonNode links = fields.get("issuelinks");
+        String expectedStatuses = String.join(" | ", rule.resolvedStatusList());
+        if (links == null || !links.isArray()) {
+            results.add(new CheckResult(details, "LINKED_BUG", "LINKED_BUGS", "Linked Bugs",
+                    "issuelinks", "Every linked " + rule.issueType() +
+                    " has status " + expectedStatuses, "<not returned>", FAIL,
+                    "Jira issue-link data was not returned or is malformed"));
+            return;
+        }
+
+        Set<String> seenKeys = new LinkedHashSet<>();
+        boolean linkedBugFound = false;
+        boolean incompleteLinkFound = false;
+        int malformedLinkNumber = 0;
+        for (JsonNode link : links) {
+            JsonNode linkedIssue = linkedIssue(link);
+            if (linkedIssue == null) {
+                incompleteLinkFound = true;
+                malformedLinkNumber++;
+                results.add(malformedLinkedIssue(details, rule, expectedStatuses,
+                        "link-" + malformedLinkNumber, "Linked issue data is missing"));
+                continue;
+            }
+
+            String linkedKey = linkedIssue.path("key").asText("").trim();
+            if (linkedKey.isEmpty()) {
+                incompleteLinkFound = true;
+                malformedLinkNumber++;
+                results.add(malformedLinkedIssue(details, rule, expectedStatuses,
+                        "link-" + malformedLinkNumber, "Linked issue key is missing"));
+                continue;
+            }
+            if (!seenKeys.add(linkedKey)) continue;
+
+            JsonNode linkedFields = linkedIssue.get("fields");
+            if (linkedFields == null || !linkedFields.isObject()) {
+                incompleteLinkFound = true;
+                results.add(malformedLinkedIssue(details, rule, expectedStatuses,
+                        linkedKey, "Linked issue fields are missing"));
+                continue;
+            }
+            List<String> issueTypes = flattenValues(linkedFields.get("issuetype"));
+            if (issueTypes.isEmpty()) {
+                incompleteLinkFound = true;
+                results.add(malformedLinkedIssue(details, rule, expectedStatuses,
+                        linkedKey, "Linked issue type was not returned"));
+                continue;
+            }
+            if (!matchesAny(issueTypes, List.of(rule.issueType()))) continue;
+
+            linkedBugFound = true;
+            List<String> statuses = flattenValues(linkedFields.get("status"));
+            boolean resolved = !statuses.isEmpty() && matchesAny(statuses, rule.resolvedStatusList());
+            String actualStatus = displayValues(statuses);
+            results.add(new CheckResult(details, "LINKED_BUG", "LINKED_BUG:" + linkedKey,
+                    "Linked Bug " + linkedKey, "issuelinks.status",
+                    expectedStatuses, actualStatus, resolved ? PASS : FAIL,
+                    resolved ? "Linked Bug " + linkedKey + " is resolved" :
+                            "Linked Bug " + linkedKey + " is not resolved; status=" + actualStatus));
+        }
+
+        if (!linkedBugFound && !incompleteLinkFound) {
+            results.add(new CheckResult(details, "LINKED_BUG", "LINKED_BUGS", "Linked Bugs",
+                    "issuelinks", "Every linked " + rule.issueType() +
+                    " has status " + expectedStatuses, "<none>", PASS,
+                    "No linked " + rule.issueType() + " issues found"));
+        }
+    }
+
+    private static JsonNode linkedIssue(JsonNode link) {
+        if (link == null || !link.isObject()) return null;
+        for (String direction : List.of("outwardIssue", "inwardIssue")) {
+            JsonNode issue = link.get(direction);
+            if (issue != null && issue.isObject()) return issue;
+        }
+        return null;
+    }
+
+    private static CheckResult malformedLinkedIssue(IssueDetails details,
+                                                     AuditProperties.LinkedBugRule rule,
+                                                     String expectedStatuses,
+                                                     String linkedKey,
+                                                     String reason) {
+        return new CheckResult(details, "LINKED_BUG", "LINKED_BUG:" + linkedKey,
+                "Linked issue " + linkedKey, "issuelinks",
+                "Linked " + rule.issueType() + " status is " + expectedStatuses,
+                "<incomplete>", FAIL, reason + "; cannot verify linked Bug compliance");
     }
 
     private static boolean hasNotApplicableFieldEvidence(

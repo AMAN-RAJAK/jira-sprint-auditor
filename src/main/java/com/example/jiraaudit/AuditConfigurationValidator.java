@@ -76,7 +76,27 @@ public final class AuditConfigurationValidator {
                                     " / " + entry.getKey());
                 }
             }
+            if (day == 3 && checkpoint.linkedBugs() != null) {
+                throw new IllegalArgumentException(
+                        "linked-bugs is a final Day 10 check and must not be configured for Day 3");
+            }
+            if (day == 10) validateLinkedBugs(checkpoint.linkedBugs());
         });
+    }
+
+    private static void validateLinkedBugs(AuditProperties.LinkedBugRule rule) {
+        if (rule == null) {
+            throw new IllegalArgumentException("linked-bugs is required for Day 10");
+        }
+        required(rule.issueType(), "Day 10 linked-bugs.issue-type");
+        if (rule.resolvedStatuses() == null || rule.resolvedStatuses().isBlank()) {
+            throw new IllegalArgumentException(
+                    "resolved-statuses is required for Day 10 linked-bugs");
+        }
+        if (rule.resolvedStatusList().stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException(
+                    "resolved-statuses contains an empty $-separated value for Day 10 linked-bugs");
+        }
     }
 
     private static void validateArtifacts(AuditProperties.Artifacts artifacts,

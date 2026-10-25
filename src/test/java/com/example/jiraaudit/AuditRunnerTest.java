@@ -64,12 +64,14 @@ class AuditRunnerTest {
                  "status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
                  "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
                  {"filename":"CWC_review"},{"filename":"ATDD_evidence"},
-                 {"filename":"ST_results"}]}
+                 {"filename":"ST_results"}],"issuelinks":[]}
                 """);
         AtomicInteger commentCalls = new AtomicInteger();
+        AtomicReference<Set<String>> requested = new AtomicReference<>();
         JiraClient client = new JiraClient() {
             @Override
             public List<JiraIssue> searchAll(String jql, Set<String> requestedFields, int pageSize) {
+                requested.set(Set.copyOf(requestedFields));
                 return List.of(new JiraIssue("10002", "PAY-102", fields));
             }
 
@@ -85,6 +87,7 @@ class AuditRunnerTest {
         runner.run(null);
 
         assertEquals(1, commentCalls.get());
+        assertTrue(requested.get().contains("issuelinks"));
         assertEquals(0, runner.exitCode());
         try (InputStream input = Files.newInputStream(onlyWorkbook());
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {

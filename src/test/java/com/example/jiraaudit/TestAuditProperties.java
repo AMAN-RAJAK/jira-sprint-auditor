@@ -34,8 +34,10 @@ final class TestAuditProperties {
                 "ATDD Status", "atdd", "Done - On Time$Not Applicable"));
 
         return Map.of(
-                3, new AuditProperties.Checkpoint(dayThree),
-                10, new AuditProperties.Checkpoint(dayTen));
+                3, new AuditProperties.Checkpoint(dayThree, null),
+                10, new AuditProperties.Checkpoint(dayTen,
+                        new AuditProperties.LinkedBugRule(
+                                "Bug", "Resolved$Closed$Done")));
     }
 
     static AuditProperties.Artifacts artifacts() {

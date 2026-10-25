@@ -17,7 +17,7 @@ public record AuditProperties(
         Report report
 ) {
     public record Jira(String baseUrl, String personalAccessToken) { }
-    public record Checkpoint(Map<String, FieldRule> fields) { }
+    public record Checkpoint(Map<String, FieldRule> fields, LinkedBugRule linkedBugs) { }
     public record FieldRule(String label, String jiraField, String acceptedValues) {
         public static final String NON_EMPTY_VALUE = "__NON_EMPTY__";
 
@@ -28,6 +28,11 @@ public record AuditProperties(
         public boolean requiresNonEmptyValue() {
             return acceptedValueList().stream()
                     .anyMatch(value -> NON_EMPTY_VALUE.equalsIgnoreCase(value));
+        }
+    }
+    public record LinkedBugRule(String issueType, String resolvedStatuses) {
+        public List<String> resolvedStatusList() {
+            return dollarSeparatedValues(resolvedStatuses);
         }
     }
     public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) { }

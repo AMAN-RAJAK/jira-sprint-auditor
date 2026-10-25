@@ -79,6 +79,8 @@ class AuditPropertiesBindingTest {
                     properties.checkpoints().get(3).fields().get("download").acceptedValueList());
             assertTrue(properties.checkpoints().get(3).fields().get("revised-sp")
                     .requiresNonEmptyValue());
+            assertEquals(List.of("Resolved", "Closed", "Done"),
+                    properties.checkpoints().get(10).linkedBugs().resolvedStatusList());
             assertEquals("WBS_", properties.artifacts().day3WbsPrefix());
             assertEquals(List.of("Not Applicable"),
                     properties.artifacts().day10().atdd().notApplicableValueList());

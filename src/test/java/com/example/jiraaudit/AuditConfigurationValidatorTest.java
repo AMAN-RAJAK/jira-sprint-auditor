@@ -59,6 +59,28 @@ class AuditConfigurationValidatorTest {
     }
 
     @Test
+    void dayTenRequiresConfiguredResolvedStatusesForLinkedBugs() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        checkpoints.put(10, new AuditProperties.Checkpoint(
+                base.checkpoints().get(10).fields(), null));
+
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(missing.getMessage().contains("linked-bugs is required"));
+
+        checkpoints.put(10, new AuditProperties.Checkpoint(
+                base.checkpoints().get(10).fields(),
+                new AuditProperties.LinkedBugRule("Bug", "Resolved$$Done")));
+        IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(empty.getMessage().contains("empty $-separated value"));
+    }
+
+    @Test
     void eachDayChoosesItsOwnFieldsAndAnyNonEmptyAcceptedValueList() {
         AuditProperties base = TestAuditProperties.settings(10);
         Map<String, AuditProperties.FieldRule> dayTen =
@@ -67,7 +89,8 @@ class AuditConfigurationValidatorTest {
                 "Coding Status", "coding",
                 "Done - On Time$Not Done$Not Applicable"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints = new LinkedHashMap<>(base.checkpoints());
-        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen));
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen,
+                base.checkpoints().get(10).linkedBugs()));
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
                 copy(base, base.jira(), 10, checkpoints, base.artifacts())));
 
@@ -95,7 +118,8 @@ class AuditConfigurationValidatorTest {
                 "Revised SP", "revisedSp", "__NON_EMPTY__$Done"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
-        checkpoints.put(3, new AuditProperties.Checkpoint(fields));
+        checkpoints.put(3, new AuditProperties.Checkpoint(fields,
+                base.checkpoints().get(3).linkedBugs()));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(

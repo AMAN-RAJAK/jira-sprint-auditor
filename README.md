@@ -15,7 +15,8 @@ For each ticket returned by the configured JQL, the application:
 3. checks the checkpoint's required attachment filename prefixes;
 4. reads newest-first Jira comments only when a missing Day-10 artifact needs
    comment evidence; and
-5. writes an overall `PASS` or `FAIL` and detailed remarks to a grid-style Excel
+5. verifies that every directly linked Bug is resolved on Day 10; and
+6. writes an overall `PASS` or `FAIL` and detailed remarks to a grid-style Excel
    report.
 
 The checkpoint is supplied explicitly as `3` or `10`. There is no date,
@@ -42,6 +43,8 @@ sprint-calendar, or time-zone calculation.
   own configurable Not Applicable values.
 - ATDD Status decides the ATDD/UT evidence path. An applicable ATDD Status
   requires ATDD; a Not Applicable ATDD Status permits UT or a UT comment.
+- Every directly linked issue whose type matches the configured Bug issue type
+  must have one of the configured resolved statuses.
 
 The Day-10 artifact decisions are:
 
@@ -52,6 +55,7 @@ The Day-10 artifact decisions are:
 | ST | If ST Status is configured as Not Applicable, ST must be absent; otherwise ST attachment or the configured ST comment is required |
 | ATDD | If ATDD Status matches `not-applicable-values`, ATDD must be absent; otherwise ATDD must be attached and cannot be waived by a comment |
 | UT | Has no mapped status field; when absent it requires the configured `UT Not Applicable` comment |
+| Linked Bugs | Every directly linked Bug must have a configured resolved status; unresolved or incomplete linked-issue data fails the parent ticket |
 
 The ATDD/UT combinations are:
 
@@ -108,7 +112,8 @@ Configure these company-specific values in `company-audit.yml`:
 - Day-10 WBS, CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
 - each mapped artifact's configurable `not-applicable-values`;
-- CWC, UT, and ST standard `comment-contains` phrases; and
+- CWC, UT, and ST standard `comment-contains` phrases;
+- the linked Bug issue type and resolved workflow statuses; and
 - report output and failure behavior.
 
 Day 3 and Day 10 field lists are independent. A field may be configured on one
@@ -133,6 +138,20 @@ not-applicable-values: 'Not Applicable$No Testing Required$N/A'
 ```
 
 This also preserves commas inside a single Not Applicable value.
+
+Configure the Day-10 linked Bug check under the Day-10 checkpoint. Resolved
+statuses use the same `$` separator and are matched case-insensitively:
+
+```yaml
+linked-bugs:
+  issue-type: Bug
+  resolved-statuses: 'Resolved$Closed$Done'
+```
+
+Only direct Jira issue links are checked. Non-Bug links are ignored. Each
+unresolved linked Bug is included in the parent ticket's Excel remarks with its
+issue key and current status. Missing link type/status data fails closed rather
+than silently skipping the link.
 
 The `$` character is reserved as the separator and cannot be part of an
 accepted Jira value. Leading and trailing spaces around each separated value
@@ -181,10 +200,10 @@ export JIRA_PERSONAL_ACCESS_TOKEN='your-profile-personal-access-token'
 the base URL when applicable. The URL must use HTTPS, and the Java runtime must
 trust the company's TLS certificate authority.
 
-The PAT owner needs permission to view all JQL tickets, configured fields,
-attachment names, and comments. Keep `company-audit.yml`, `.env`, generated
-reports, and tokens out of version control; the supplied `.gitignore` excludes
-the local company file and report directory.
+The PAT owner needs permission to view all JQL tickets, their linked issues,
+configured fields, attachment names, and comments. Keep `company-audit.yml`,
+`.env`, generated reports, and tokens out of version control; the supplied
+`.gitignore` excludes the local company file and report directory.
 
 ### Finding custom-field IDs
 
@@ -241,7 +260,8 @@ edited `company-audit.yml` exists in the repository root.
 
 ## Deliberately simple scope
 
-- Only tickets returned directly by the JQL are audited.
+- Tickets returned by the JQL are audited, and their direct linked issues are
+  inspected only for the Day-10 linked Bug check.
 - Artifact contents are not inspected; checks use attachment filename prefixes.
 - The application does not schedule itself, modify Jira, send notifications,
   or keep audit history.

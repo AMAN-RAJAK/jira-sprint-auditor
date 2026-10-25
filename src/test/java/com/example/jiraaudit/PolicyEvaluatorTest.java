@@ -64,7 +64,7 @@ class PolicyEvaluatorTest {
 
         var results = evaluator.evaluate(issue, TestAuditProperties.settings(10), 10, List.of());
 
-        assertEquals(9, results.size());
+        assertEquals(10, results.size());
         assertTrue(results.stream().allMatch(result -> result.outcome() == PASS));
         assertEquals(PASS, result(results, "UT_OR_ATDD").outcome());
         assertFalse(evaluator.requiresComments(issue, TestAuditProperties.settings(10), 10));
@@ -130,6 +130,49 @@ class PolicyEvaluatorTest {
         assertTrue(atdd.reason().contains("cannot be waived by a comment"));
         assertEquals(FAIL, result(results, "UT_OR_ATDD").outcome());
         assertFalse(evaluator.requiresComments(issue, TestAuditProperties.settings(10), 10));
+    }
+
+    @Test
+    void dayTenFailsWhenAnyDirectlyLinkedBugIsNotResolved() throws Exception {
+        var issue = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"UT_results"},{"filename":"ST_results"}],
+                 "issuelinks":[
+                   {"outwardIssue":{"id":"20001","key":"PAY-201","fields":{
+                     "issuetype":{"name":"Bug"},"status":{"name":"Resolved"}}}},
+                   {"inwardIssue":{"id":"20002","key":"PAY-202","fields":{
+                     "issuetype":{"name":"Bug"},"status":{"name":"In Progress"}}}},
+                   {"outwardIssue":{"id":"20003","key":"PAY-203","fields":{
+                     "issuetype":{"name":"Task"},"status":{"name":"In Progress"}}}}
+                 ]}
+                """);
+
+        var results = evaluator.evaluate(issue, TestAuditProperties.settings(10), 10, List.of());
+
+        assertEquals(PASS, result(results, "LINKED_BUG:PAY-201").outcome());
+        CheckResult unresolved = result(results, "LINKED_BUG:PAY-202");
+        assertEquals(FAIL, unresolved.outcome());
+        assertTrue(unresolved.reason().contains("status=In Progress"));
+        assertTrue(results.stream().noneMatch(result ->
+                result.ruleKey().equals("LINKED_BUG:PAY-203")));
+    }
+
+    @Test
+    void dayTenFailsClosedWhenLinkedIssueTypeCannotBeVerified() throws Exception {
+        var issue = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Not Applicable","attachment":[{"filename":"WBS_scope"},
+                 {"filename":"CWC_review"},{"filename":"UT_results"},{"filename":"ST_results"}],
+                 "issuelinks":[{"outwardIssue":{"id":"20004","key":"PAY-204",
+                   "fields":{"status":{"name":"Resolved"}}}}]}
+                """);
+
+        CheckResult incomplete = result(evaluator.evaluate(issue,
+                TestAuditProperties.settings(10), 10, List.of()), "LINKED_BUG:PAY-204");
+
+        assertEquals(FAIL, incomplete.outcome());
+        assertTrue(incomplete.reason().contains("type was not returned"));
     }
 
     @Test
@@ -204,7 +247,8 @@ class PolicyEvaluatorTest {
                 "Not Applicable (POC, Backporting, NoCodeChange)$Suite Pass (90%)"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
-        checkpoints.put(3, new AuditProperties.Checkpoint(fields));
+        checkpoints.put(3, new AuditProperties.Checkpoint(fields,
+                base.checkpoints().get(3).linkedBugs()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
                 checkpoints, base.artifacts(), base.report());
         var issue = issue("""
@@ -229,7 +273,8 @@ class PolicyEvaluatorTest {
                 "Revised SP", "revisedSp", AuditProperties.FieldRule.NON_EMPTY_VALUE));
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
-        checkpoints.put(3, new AuditProperties.Checkpoint(fields));
+        checkpoints.put(3, new AuditProperties.Checkpoint(fields,
+                base.checkpoints().get(3).linkedBugs()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
                 checkpoints, base.artifacts(), base.report());
 
@@ -305,6 +350,7 @@ class PolicyEvaluatorTest {
             fields.set("assignee", MAPPER.readTree(
                     "{\"displayName\":\"Asha Rao\",\"name\":\"arao\"}"));
         }
+        if (!fields.has("issuelinks")) fields.set("issuelinks", MAPPER.createArrayNode());
         return new JiraClient.JiraIssue("10002", "PAY-102", fields);
     }
 
