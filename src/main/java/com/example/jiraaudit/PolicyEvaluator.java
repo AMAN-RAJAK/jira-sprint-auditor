@@ -253,9 +253,8 @@ public class PolicyEvaluator {
         JsonNode assignee = fields.get("assignee");
         String assigneeName = assignee.isNull() ? "Unassigned" :
                 assignee.path("displayName").asText("Unassigned");
-        String assigneeAccountId = assignee.isNull() ? "" : assignee.path("accountId").asText("");
         return new IssueDetails(issue.id(), issue.key(), fields.path("summary").asText(""),
-                assigneeName, assigneeAccountId, fields.path("status").path("name").asText("UNKNOWN"));
+                assigneeName, fields.path("status").path("name").asText("UNKNOWN"));
     }
 
     private static String displayLabel(String key, String label) {

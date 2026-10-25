@@ -2,9 +2,8 @@
 audit:
   jira:
     base-url: ${JIRA_BASE_URL}
-    # Jira Cloud profile API tokens use the account email plus the token.
-    email: ${JIRA_EMAIL}
-    api-token: ${JIRA_API_TOKEN}
+    # Jira Server/Data Center PAT. It is sent as Authorization: Bearer <token>.
+    personal-access-token: ${JIRA_PERSONAL_ACCESS_TOKEN}
 
   # This query is the complete audit scope. Include every ticket to report.
   jql: 'project = PAY AND sprint = 123 AND issuetype = Story ORDER BY key ASC'

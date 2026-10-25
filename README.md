@@ -35,7 +35,7 @@ A matching attachment filename prefix passes immediately. The following controls
 | `ATDD_` | A comment containing `ATDD Not Applicable` |
 | `ST_` | ST Status = `Not Applicable` **and** a comment containing `ST Not Applicable` |
 
-The application first identifies missing artifacts. It requests comments only when at least one missing artifact has an exception rule. Jira comments are loaded completely using the dedicated comments endpoint in newest-first order. Matching is case-insensitive, supports Jira's Atlassian Document Format, and stops at the newest matching comment.
+The application first identifies missing artifacts. It requests comments only when at least one missing artifact has an exception rule. Jira comments are loaded completely using the Jira Server/Data Center comments endpoint in newest-first order. Matching is case-insensitive and stops at the newest matching comment.
 
 Because calendar logic is intentionally absent, comment matching does not determine whether a comment belongs to the current sprint. If that distinction is required, use a sprint-specific phrase or add a separate comment-age rule later.
 
@@ -64,11 +64,19 @@ The workbook has one sheet named `Audit Results` and one row per JQL ticket:
 
 - Java 21
 - Maven 3.9+
-- Jira Cloud access to every ticket, configured field, attachment name, and comment returned by the JQL
-- A Jira API token created from the user profile
-- The email address of the Jira account that created the token
+- Jira Server/Data Center with Personal Access Token support (Jira 8.14+)
+- A Personal Access Token created from the Jira user profile
+- Permission for that Jira user to view every ticket, field, attachment name, and comment returned by the JQL
+- HTTPS access from the machine running this application
 
-Jira Cloud profile API-token Basic authentication requires both email and token; a token by itself is not enough. The audit sees only issues and comments that this user is permitted to view.
+The application sends only `Authorization: Bearer <personal-access-token>`.
+No email, username, password, or Basic authentication is used. The audit sees
+only issues and comments that the PAT owner is permitted to view.
+
+If Jira is hosted below a context path, include it in the base URL, for example
+`https://jira.company.example/jira`. If the internal Jira certificate uses a
+private company CA, that CA must be trusted by the Java runtime; the application
+does not disable TLS certificate validation.
 
 ## Configuration
 
@@ -94,14 +102,14 @@ prefixes are allowed, but they cannot be waived.
 
 The sample file is [`config/company-audit.example.yml`](config/company-audit.example.yml).
 
-Do not commit `company-audit.yml`, `.env`, or API tokens. The supplied `.gitignore` excludes the local company file and report directory.
+Do not commit `company-audit.yml`, `.env`, or personal access tokens. The supplied `.gitignore` excludes the local company file and report directory.
 
 ### Find Jira custom-field IDs
 
 ```bash
-curl --user "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+curl --header "Authorization: Bearer $JIRA_PERSONAL_ACCESS_TOKEN" \
   --header 'Accept: application/json' \
-  "$JIRA_BASE_URL/rest/api/3/field"
+  "$JIRA_BASE_URL/rest/api/2/field"
 ```
 
 Use the returned field `id`, not its display label.
@@ -124,9 +132,8 @@ target/jira-sprint-auditor-1.0.0.jar
 Set credentials outside YAML:
 
 ```bash
-export JIRA_BASE_URL='https://yourcompany.atlassian.net'
-export JIRA_EMAIL='your.name@company.com'
-export JIRA_API_TOKEN='your-profile-api-token'
+export JIRA_BASE_URL='https://jira.company.example/jira'
+export JIRA_PERSONAL_ACCESS_TOKEN='your-profile-personal-access-token'
 ```
 
 Then choose the checkpoint explicitly:

@@ -19,11 +19,12 @@ public final class AuditConfigurationValidator {
     public static void validateCredentials(AuditProperties cfg) {
         if (cfg.jira() == null) throw new IllegalArgumentException("audit.jira is required");
         required(cfg.jira().baseUrl(), "audit.jira.base-url");
-        required(cfg.jira().email(), "JIRA_EMAIL / audit.jira.email");
-        required(cfg.jira().apiToken(), "JIRA_API_TOKEN / audit.jira.api-token");
+        required(cfg.jira().personalAccessToken(),
+                "JIRA_PERSONAL_ACCESS_TOKEN / audit.jira.personal-access-token");
         URI url = URI.create(cfg.jira().baseUrl());
         if (!"https".equalsIgnoreCase(url.getScheme()) || url.getHost() == null) {
-            throw new IllegalArgumentException("Jira base URL must be an HTTPS URL");
+            throw new IllegalArgumentException(
+                    "Jira base URL must be an HTTPS URL so the personal access token is protected");
         }
     }
 

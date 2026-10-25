@@ -32,7 +32,7 @@ class AuditRunnerTest {
     void dayThreeRunsJqlChecksOnlyWbsAndWritesOneGridWorkbook() throws Exception {
         AuditProperties properties = properties(3, true);
         var fields = MAPPER.readTree("""
-                {"summary":"Ship audit","assignee":{"displayName":"Asha Rao","accountId":"abc-123"},
+                {"summary":"Ship audit","assignee":{"displayName":"Asha Rao","name":"arao"},
                  "status":{"name":"In Progress"},"coding":"In Progress","st":"In Progress",
                  "attachment":[{"filename":"WBS_scope.xlsx"}]}
                 """);
@@ -177,7 +177,7 @@ class AuditRunnerTest {
                 "st-status", List.of("Not Applicable"), "ST Not Applicable"));
 
         return new AuditProperties(
-                new AuditProperties.Jira("https://example.atlassian.net", "audit@example.com", "token"),
+                new AuditProperties.Jira("https://jira.company.example", "test-pat"),
                 "project = PAY AND sprint = 123", runDay, 100, fields,
                 new AuditProperties.Artifacts(Map.of(
                         1, List.of(), 3, List.of("WBS_"), 7, List.of(),

@@ -6,6 +6,5 @@ public record IssueDetails(
         String issueKey,
         String summary,
         String assigneeName,
-        String assigneeAccountId,
         String status
 ) { }

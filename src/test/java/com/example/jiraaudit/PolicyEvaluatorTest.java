@@ -231,7 +231,7 @@ class PolicyEvaluatorTest {
                 "st-status", List.of("Not Applicable"), "ST Not Applicable"));
 
         return new AuditProperties(
-                new AuditProperties.Jira("https://test.atlassian.net", "audit@example.com", "token"),
+                new AuditProperties.Jira("https://jira.company.example", "test-pat"),
                 "project = TEST", 1, 100, fields,
                 new AuditProperties.Artifacts(Map.of(
                         1, List.of(), 3, List.of("WBS_"), 7, List.of(),
@@ -244,7 +244,7 @@ class PolicyEvaluatorTest {
         if (!fields.has("summary")) fields.put("summary", "Implement payment audit");
         if (!fields.has("assignee")) {
             fields.set("assignee", MAPPER.readTree(
-                    "{\"displayName\":\"Asha Rao\",\"accountId\":\"abc-123\"}"));
+                    "{\"displayName\":\"Asha Rao\",\"name\":\"arao\"}"));
         }
         return new JiraClient.JiraIssue("10002", "PAY-102", fields);
     }

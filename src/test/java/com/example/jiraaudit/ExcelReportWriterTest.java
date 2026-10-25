@@ -24,9 +24,9 @@ class ExcelReportWriterTest {
     @Test
     void writesOneSimpleTicketGridWithPassFailAndRemarks() throws Exception {
         IssueDetails failedIssue = new IssueDetails("10002", "PAY-102", "=unsafe summary",
-                "Asha Rao", "abc-123", "In Progress");
+                "Asha Rao", "In Progress");
         IssueDetails passedIssue = new IssueDetails("10003", "PAY-103", "No code change",
-                "Dev One", "dev-1", "Done");
+                "Dev One", "Done");
         List<CheckResult> checks = List.of(
                 new CheckResult(failedIssue, "FIELD", "coding-status", "Coding Status",
                         "customfield_10101", "Done", "In Progress", CheckResult.Outcome.FAIL,
@@ -48,7 +48,7 @@ class ExcelReportWriterTest {
         ExcelReportWriter writer = new ExcelReportWriter(clock);
 
         Path report = writer.write(checks, new ExcelReportWriter.ReportContext(
-                10, "https://example.atlassian.net", tempDirectory.toString()));
+                10, "https://jira.company.example", tempDirectory.toString()));
 
         assertTrue(report.getFileName().toString().contains("day10-20261025-233000-000-"));
         assertTrue(report.getFileName().toString().endsWith(".xlsx"));

@@ -30,15 +30,19 @@ public class JiraAuditApplication {
 
     @Bean
     RestClient jiraRestClient(AuditProperties settings) {
+        return configureJiraRestClient(RestClient.builder(), settings).build();
+    }
+
+    static RestClient.Builder configureJiraRestClient(RestClient.Builder builder,
+                                                       AuditProperties settings) {
         AuditConfigurationValidator.validateCredentials(settings);
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(10_000);
         requestFactory.setReadTimeout(30_000);
-        return RestClient.builder()
-                .baseUrl(settings.jira().baseUrl().replaceAll("/+$", ""))
-                .defaultHeaders(headers -> headers.setBasicAuth(
-                        settings.jira().email(), settings.jira().apiToken()))
-                .requestFactory(requestFactory)
-                .build();
+        return builder
+                .baseUrl(settings.jira().baseUrl().replaceAll("/+$", "") + "/")
+                .defaultHeaders(headers -> headers.setBearerAuth(
+                        settings.jira().personalAccessToken()))
+                .requestFactory(requestFactory);
     }
 }

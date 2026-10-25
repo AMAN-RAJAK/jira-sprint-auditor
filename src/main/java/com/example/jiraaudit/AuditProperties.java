@@ -15,7 +15,7 @@ public record AuditProperties(
         Artifacts artifacts,
         Report report
 ) {
-    public record Jira(String baseUrl, String email, String apiToken) { }
+    public record Jira(String baseUrl, String personalAccessToken) { }
     public record FieldRule(String label, String jiraField,
                             Map<Integer, List<String>> days) { }
     public record Artifacts(Map<Integer, List<String>> requiredByDay,

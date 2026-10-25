@@ -39,9 +39,8 @@ class AuditPropertiesBindingTest {
                 throw new IllegalStateException(error);
             }
         }).withPropertyValues(
-                "JIRA_BASE_URL=https://test.atlassian.net",
-                "JIRA_EMAIL=audit@example.com",
-                "JIRA_API_TOKEN=test-token",
+                "JIRA_BASE_URL=https://jira.company.example",
+                "JIRA_PERSONAL_ACCESS_TOKEN=test-pat",
                 "AUDIT_RUN_DAY=3"
         );
 
@@ -49,6 +48,7 @@ class AuditPropertiesBindingTest {
             assertNull(context.getStartupFailure());
             AuditProperties properties = context.getBean(AuditProperties.class);
             assertEquals(3, properties.runDay());
+            assertEquals("test-pat", properties.jira().personalAccessToken());
             assertEquals(List.of("WBS_"), properties.artifacts().requiredByDay().get(3));
             assertEquals("CWC Not Applicable",
                     properties.artifacts().missingExceptions().get("CWC_").commentContains());

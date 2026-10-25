@@ -12,6 +12,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuditConfigurationValidatorTest {
     @Test
+    void acceptsBearerPatCredentialsAndRequiresHttps() {
+        AuditProperties valid = properties(3);
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validateCredentials(valid));
+
+        AuditProperties missingPat = new AuditProperties(
+                new AuditProperties.Jira("https://jira.company.example", " "),
+                valid.jql(), valid.runDay(), valid.pageSize(), valid.fields(), valid.artifacts(), valid.report());
+        IllegalArgumentException tokenError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validateCredentials(missingPat));
+        assertTrue(tokenError.getMessage().contains("JIRA_PERSONAL_ACCESS_TOKEN"));
+
+        AuditProperties insecure = new AuditProperties(
+                new AuditProperties.Jira("http://jira.company.example", "test-pat"),
+                valid.jql(), valid.runDay(), valid.pageSize(), valid.fields(), valid.artifacts(), valid.report());
+        IllegalArgumentException urlError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validateCredentials(insecure));
+        assertTrue(urlError.getMessage().contains("HTTPS"));
+    }
+
+    @Test
     void acceptsSimpleCheckpointConfiguration() {
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(3)));
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(10)));
@@ -255,7 +275,7 @@ class AuditConfigurationValidatorTest {
     private AuditProperties properties(Integer day, Map<String, AuditProperties.FieldRule> fields,
                                        AuditProperties.Artifacts artifacts) {
         return new AuditProperties(
-                new AuditProperties.Jira("https://test.atlassian.net", "audit@example.com", "token"),
+                new AuditProperties.Jira("https://jira.company.example", "test-pat"),
                 "project = TEST", day, 100, fields, artifacts,
                 new AuditProperties.Report("target/reports", true, true));
     }

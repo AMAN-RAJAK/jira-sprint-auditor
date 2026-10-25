@@ -34,23 +34,42 @@ public class JiraSearchClient implements JiraClient {
     @Override
     public List<JiraIssue> searchAll(String jql, Set<String> fields, int pageSize) {
         List<JiraIssue> issues = new ArrayList<>();
-        Set<String> seenTokens = new LinkedHashSet<>();
         Set<String> seenIssueIds = new LinkedHashSet<>();
         Set<String> seenIssueKeys = new LinkedHashSet<>();
-        String nextToken = null;
+        Integer expectedTotal = null;
+        int startAt = 0;
 
-        do {
+        while (true) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("jql", jql);
             body.put("fields", new ArrayList<>(fields));
             body.put("maxResults", pageSize);
-            if (nextToken != null) body.put("nextPageToken", nextToken);
+            body.put("startAt", startAt);
 
             JsonNode response = postWithRetry(body);
             if (response == null || !response.path("issues").isArray()) {
                 throw new IllegalStateException("Jira JQL response has no issues array");
             }
-            for (JsonNode issue : response.path("issues")) {
+            if (!response.path("startAt").canConvertToInt()
+                    || !response.path("total").canConvertToInt()) {
+                throw incompleteSearch("response has invalid pagination metadata");
+            }
+            int responseStartAt = response.path("startAt").intValue();
+            int responseTotal = response.path("total").intValue();
+            if (responseStartAt != startAt || responseTotal < 0) {
+                throw incompleteSearch("response has inconsistent pagination metadata");
+            }
+            if (expectedTotal == null) {
+                expectedTotal = responseTotal;
+            } else if (responseTotal != expectedTotal) {
+                throw incompleteSearch("issue total changed while pages were being loaded");
+            }
+
+            JsonNode page = response.path("issues");
+            if (page.isEmpty() && issues.size() < expectedTotal) {
+                throw incompleteSearch("Jira returned an empty page before the total was reached");
+            }
+            for (JsonNode issue : page) {
                 String id = issue.path("id").asText("");
                 String key = issue.path("key").asText("");
                 if (id.isBlank() || key.isBlank() || !issue.path("fields").isObject()) {
@@ -61,14 +80,14 @@ public class JiraSearchClient implements JiraClient {
                 }
                 issues.add(new JiraIssue(id, key, issue.path("fields")));
             }
-            if (response.path("isLast").asBoolean(false)) break;
-            String token = response.path("nextPageToken").asText("");
-            if (token.isBlank() || !seenTokens.add(token)) {
-                throw new IllegalStateException("Incomplete/repeated Jira pagination token; refusing a partial report");
+            if (issues.size() > expectedTotal) {
+                throw incompleteSearch("Jira returned more issues than its declared total");
             }
-            nextToken = token;
-        } while (true);
-        return issues;
+            if (issues.size() == expectedTotal) {
+                return List.copyOf(issues);
+            }
+            startAt += page.size();
+        }
     }
 
     @Override
@@ -149,7 +168,7 @@ public class JiraSearchClient implements JiraClient {
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
                 return restClient.post()
-                        .uri("/rest/api/3/search/jql")
+                        .uri("rest/api/2/search")
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MediaType.APPLICATION_JSON)
                         .body(body)
@@ -158,8 +177,8 @@ public class JiraSearchClient implements JiraClient {
             } catch (RestClientResponseException error) {
                 int status = error.getStatusCode().value();
                 if (attempt == 3 || (status != 429 && status < 500)) {
-                    throw new IllegalStateException("Jira search failed: HTTP " + status +
-                            ". Check URL, token, permissions and JQL.", error);
+                    throw new IllegalStateException("Jira Data Center search failed: HTTP " + status +
+                            ". Check URL, personal access token, permissions and JQL.", error);
                 }
                 try {
                     Thread.sleep(500L * attempt);
@@ -177,7 +196,7 @@ public class JiraSearchClient implements JiraClient {
             try {
                 return restClient.get()
                         .uri(uriBuilder -> uriBuilder
-                                .path("/rest/api/3/issue/{issueKey}/comment")
+                                .path("rest/api/2/issue/{issueKey}/comment")
                                 .queryParam("startAt", startAt)
                                 .queryParam("maxResults", pageSize)
                                 .queryParam("orderBy", "-created")
@@ -189,7 +208,8 @@ public class JiraSearchClient implements JiraClient {
                 int status = error.getStatusCode().value();
                 if (attempt == 3 || (status != 429 && status < 500)) {
                     throw new IllegalStateException("Jira comment retrieval failed for " + issueKey
-                            + ": HTTP " + status + ". Check token and issue permissions.", error);
+                            + ": HTTP " + status +
+                            ". Check the personal access token and issue permissions.", error);
                 }
                 retryDelay(attempt);
             }
@@ -212,6 +232,11 @@ public class JiraSearchClient implements JiraClient {
 
     private static IllegalStateException incompleteComments(String issueKey, String reason) {
         return new IllegalStateException("Incomplete Jira comments for " + issueKey + ": " + reason
+                + "; refusing a partial audit");
+    }
+
+    private static IllegalStateException incompleteSearch(String reason) {
+        return new IllegalStateException("Incomplete Jira issue search: " + reason
                 + "; refusing a partial audit");
     }
 
