@@ -55,23 +55,23 @@ class PolicyEvaluatorTest {
     }
 
     @Test
-    void wbsPassesWhenAttachmentMatchesAnyConfiguredPrefix() throws Exception {
+    void wbsPassesWhenAttachmentContainsAnyConfiguredMarker() throws Exception {
         AuditProperties base = TestAuditProperties.settings(3);
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3,
                 base.pageSize(), base.checkpoints(),
-                new AuditProperties.Artifacts("WBS_$WORK_BREAKDOWN_", base.artifacts().day10()),
+                new AuditProperties.Artifacts("WBS$WORK_BREAKDOWN", base.artifacts().day10()),
                 base.report());
         var issue = issue("""
                 {"status":{"name":"In Progress"},"coding":"In Progress",
-                 "download":"Started","attachment":[{"filename":"work_breakdown_scope.xlsx"}]}
+                 "download":"Started","attachment":[{"filename":"IAD_wbs-scope.xlsx"}]}
                 """);
 
         CheckResult wbs = result(evaluator.evaluate(issue, custom, 3, List.of()), "WBS");
 
         assertEquals(PASS, wbs.outcome());
-        assertEquals("Attached filename starts with any of: WBS_ | WORK_BREAKDOWN_",
+        assertEquals("Attached filename contains any of: WBS | WORK_BREAKDOWN",
                 wbs.expected());
-        assertEquals("work_breakdown_scope.xlsx", wbs.actual());
+        assertEquals("IAD_wbs-scope.xlsx", wbs.actual());
     }
 
     @Test

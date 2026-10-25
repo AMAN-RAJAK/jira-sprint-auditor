@@ -107,14 +107,15 @@ public class PolicyEvaluator {
         if (attachments == null || !attachments.isArray()) {
             return malformedAttachment(details, artifactName);
         }
-        List<String> matches = matchingAttachments(attachments, prefixes);
+        List<String> matches = attachmentsContainingAny(attachments, prefixes);
         boolean passed = !matches.isEmpty();
         String expectedPrefixes = String.join(" | ", prefixes);
         return new CheckResult(details, "ARTIFACT", artifactName, artifactName, "attachment",
-                "Attached filename starts with any of: " + expectedPrefixes,
+                "Attached filename contains any of: " + expectedPrefixes,
                 passed ? String.join(" | ", matches) : "<missing>", passed ? PASS : FAIL,
                 passed ? "Required " + artifactName + " artifact is attached" :
-                        "Required " + artifactName + " artifact is not attached; expected one of " +
+                        "Required " + artifactName + " artifact is not attached; " +
+                                "expected a filename containing one of " +
                                 expectedPrefixes + " and it cannot be waived");
     }
 
@@ -364,10 +365,10 @@ public class PolicyEvaluator {
                 .filter(name -> normalize(name).startsWith(normalize(prefix))).toList();
     }
 
-    private static List<String> matchingAttachments(JsonNode attachments, List<String> prefixes) {
+    private static List<String> attachmentsContainingAny(JsonNode attachments, List<String> markers) {
         return attachmentNames(attachments).stream()
-                .filter(name -> prefixes.stream()
-                        .anyMatch(prefix -> normalize(name).startsWith(normalize(prefix))))
+                .filter(name -> markers.stream()
+                        .anyMatch(marker -> normalize(name).contains(normalize(marker))))
                 .distinct()
                 .toList();
     }

@@ -12,7 +12,7 @@ For each ticket returned by the configured JQL, the application:
 
 1. records the Jira ID, key, summary, assignee, and workflow status;
 2. checks the fields configured for the selected checkpoint;
-3. checks the checkpoint's required attachment filename prefixes;
+3. checks the checkpoint's required attachment filename rules;
 4. reads newest-first Jira comments only when a missing Day-10 artifact needs
    comment evidence; and
 5. verifies that every directly linked Bug is resolved on Day 10; and
@@ -29,7 +29,7 @@ sprint-calendar, or time-zone calculation.
 - Only the fields under `audit.checkpoints.3.fields` are checked.
 - Each field passes when its Jira value matches any configured
   `accepted-values` entry.
-- An attachment whose filename starts with any configured WBS prefix is
+- An attachment whose filename contains any configured WBS marker is
   mandatory.
 - CWC, UT, ATDD, and ST artifacts are not checked on Day 3.
 
@@ -108,8 +108,8 @@ Configure these company-specific values in `company-audit.yml`:
 - `audit.jql`: the complete story scope for the audit;
 - `audit.checkpoints.3.fields`: Day-3 Jira field IDs and possible values;
 - `audit.checkpoints.10.fields`: Day-10 Jira field IDs and possible values;
-- `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename prefix or alternative prefixes;
-- Day-10 WBS alternative prefixes and CWC, UT, ATDD, and ST filename prefixes;
+- `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename marker or alternative markers;
+- Day-10 WBS markers and CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
 - each mapped artifact's configurable `not-applicable-values`;
 - CWC, UT, and ST standard `comment-contains` phrases;
@@ -139,21 +139,21 @@ not-applicable-values: 'Not Applicable$No Testing Required$N/A'
 
 This also preserves commas inside a single Not Applicable value.
 
-WBS can also have multiple possible filename prefixes. Configure them as one
+WBS can also have multiple possible filename markers. Configure them as one
 quoted `$`-separated string for each checkpoint:
 
 ```yaml
 artifacts:
-  day-3-wbs-prefix: 'WBS_$WORK_BREAKDOWN_$ESTIMATE_'
+  day-3-wbs-prefix: 'WBS$WORK_BREAKDOWN$ESTIMATE'
   day-10:
-    wbs-prefix: 'WBS_$WORK_BREAKDOWN_$ESTIMATE_'
+    wbs-prefix: 'WBS$WORK_BREAKDOWN$ESTIMATE'
 ```
 
-The WBS check passes when at least one attachment filename starts with any one
-of these prefixes. Prefix matching is case-insensitive. Empty alternatives such
-as `WBS_$$ESTIMATE_` and duplicate alternatives are rejected at startup. A
-single prefix such as `WBS_` remains valid, so existing configuration does not
-need to change.
+The WBS check passes when at least one attachment filename contains any one of
+these markers. Matching is case-insensitive, so the marker `WBS` accepts names
+such as `WBS_file.xlsx`, `WBS-file.xlsx`, and `IAD_WBS_file.xlsx`. Empty
+alternatives such as `WBS$$ESTIMATE` and duplicate alternatives are rejected at
+startup. CWC, UT, ATDD, and ST continue to use strict filename-prefix matching.
 
 Configure the Day-10 linked Bug check under the Day-10 checkpoint. Resolved
 statuses use the same `$` separator and are matched case-insensitively:
@@ -278,7 +278,8 @@ edited `company-audit.yml` exists in the repository root.
 
 - Tickets returned by the JQL are audited, and their direct linked issues are
   inspected only for the Day-10 linked Bug check.
-- Artifact contents are not inspected; checks use attachment filename prefixes.
+- Artifact contents are not inspected; checks use the WBS filename markers and
+  the other artifacts' filename prefixes.
 - The application does not schedule itself, modify Jira, send notifications,
   or keep audit history.
 - The generated `.xlsx` workbook is the audit snapshot for that run.
