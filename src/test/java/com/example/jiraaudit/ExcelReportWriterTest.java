@@ -1,7 +1,6 @@
 package com.example.jiraaudit;
 
 import org.apache.poi.ss.usermodel.CellType;
-import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -13,11 +12,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExcelReportWriterTest {
@@ -25,99 +22,64 @@ class ExcelReportWriterTest {
     Path tempDirectory;
 
     @Test
-    void writesRealWorkbookWithIssueAndDetailedComplianceData() throws Exception {
-        IssueDetails issue = new IssueDetails("10002", "PAY-102", "=unsafe-looking summary",
-                "Story", "Asha Rao", "abc-123", "Done", "Fixed", true);
+    void writesOneSimpleTicketGridWithPassFailAndRemarks() throws Exception {
+        IssueDetails failedIssue = new IssueDetails("10002", "PAY-102", "=unsafe summary",
+                "Asha Rao", "abc-123", "In Progress");
+        IssueDetails passedIssue = new IssueDetails("10003", "PAY-103", "No code change",
+                "Dev One", "dev-1", "Done");
         List<CheckResult> checks = List.of(
-                new CheckResult(issue, "FIELD", "download", "Download", "customfield_10101",
-                        "Done", "Started", CheckResult.Outcome.FAIL, "Expected value not present"),
-                new CheckResult(issue, "ARTIFACT", "UT_", "UT_", "attachment",
-                        "Filename starts with UT_", "UT_results.xlsx", CheckResult.Outcome.PASS,
-                        "Attachment found"),
-                new CheckResult(issue, "LINKED_ISSUE", "linked-issues-closed", "BUG-7 (Bug)",
-                        "issuelinks / blocks / outward", "Completed status category",
-                        "BUG-7 | Closed | completed", CheckResult.Outcome.PASS,
-                        "Linked issue is in a completed status category",
-                        new LinkedIssueDetails("20007", "BUG-7", "Fix payment defect", "Bug",
-                                "Dev One", "dev-1", "Closed", "completed", "Fixed",
-                                "outward", "blocks")),
-                new CheckResult(issue, "FINAL_GATE", "all-checks-pass", "Final compliance gate",
-                        "Day 10+ policy", "Every check is PASS", "PASS=2 | FAIL=1 | SKIP=0",
-                        CheckResult.Outcome.FAIL, "One underlying check failed")
+                new CheckResult(failedIssue, "FIELD", "coding-status", "Coding Status",
+                        "customfield_10101", "Done", "In Progress", CheckResult.Outcome.FAIL,
+                        "Coding Status does not match the Day 10 expected value"),
+                new CheckResult(failedIssue, "ARTIFACT", "WBS_", "WBS_", "attachment",
+                        "Attached filename starts with WBS_", "WBS_scope.xlsx", CheckResult.Outcome.PASS,
+                        "Required artifact is attached"),
+                new CheckResult(passedIssue, "FIELD", "coding-status", "Coding Status",
+                        "customfield_10101", "Done | No Code Changes", "No Code Changes",
+                        CheckResult.Outcome.PASS, "Expected value matched"),
+                new CheckResult(passedIssue, "ARTIFACT", "CWC_", "CWC_",
+                        "attachment + comments + coding-status",
+                        "Attachment CWC_ or comment", "attachment=<missing>; comment=9",
+                        CheckResult.Outcome.PASS,
+                        "Missing artifact accepted by configured Not Applicable evidence")
         );
-        // The clock uses a non-UTC zone near midnight; report evidence must still be UTC.
-        Clock clock = Clock.fixed(Instant.parse("2026-10-22T23:30:00Z"),
+        Clock clock = Clock.fixed(Instant.parse("2026-10-25T23:30:00Z"),
                 ZoneId.of("Asia/Kolkata"));
         ExcelReportWriter writer = new ExcelReportWriter(clock);
-        ExcelReportWriter.ReportContext context = new ExcelReportWriter.ReportContext(
-                7, "project = PAY AND sprint = 123",
-                "https://example.atlassian.net", tempDirectory.toString());
 
-        Path report = writer.write(checks, context);
-        Path secondReport = writer.write(checks, context);
+        Path report = writer.write(checks, new ExcelReportWriter.ReportContext(
+                10, "https://example.atlassian.net", tempDirectory.toString()));
 
+        assertTrue(report.getFileName().toString().contains("day10-20261025-233000-000-"));
         assertTrue(report.getFileName().toString().endsWith(".xlsx"));
-        assertTrue(report.getFileName().toString().contains("day7-20261022-233000-000-"));
-        assertNotEquals(report, secondReport);
-        assertTrue(Files.size(report) > 0);
-        try (var files = Files.list(tempDirectory)) {
-            assertEquals(2, files.filter(path -> path.getFileName().toString().endsWith(".xlsx")).count());
-        }
         try (InputStream input = Files.newInputStream(report);
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {
-            assertEquals(4, workbook.getNumberOfSheets());
-            assertNotNull(workbook.getSheet("Run Summary"));
-            assertNotNull(workbook.getSheet("Issues"));
-            assertNotNull(workbook.getSheet("Linked Issues"));
-            assertNotNull(workbook.getSheet("Check Details"));
+            assertEquals(1, workbook.getNumberOfSheets());
+            var sheet = workbook.getSheet("Audit Results");
+            assertNotNull(sheet);
+            assertEquals(8, sheet.getRow(0).getLastCellNum());
+            assertEquals("Run Day", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("Jira ID", sheet.getRow(0).getCell(1).getStringCellValue());
+            assertEquals("Assignee", sheet.getRow(0).getCell(4).getStringCellValue());
+            assertEquals("Jira Status", sheet.getRow(0).getCell(5).getStringCellValue());
+            assertEquals("Audit Result", sheet.getRow(0).getCell(6).getStringCellValue());
+            assertEquals("Remarks", sheet.getRow(0).getCell(7).getStringCellValue());
 
-            var issueRow = workbook.getSheet("Issues").getRow(1);
-            assertEquals("10002", issueRow.getCell(0).getStringCellValue());
-            assertEquals("PAY-102", issueRow.getCell(1).getStringCellValue());
-            assertNotNull(issueRow.getCell(1).getHyperlink());
-            assertEquals("Asha Rao", issueRow.getCell(5).getStringCellValue());
-            assertEquals("NON-COMPLIANT", issueRow.getCell(14).getStringCellValue());
-            assertEquals(3, issueRow.getCell(10).getNumericCellValue());
-            assertEquals(1, issueRow.getCell(12).getNumericCellValue());
-            assertTrue(!issueRow.getCell(15).getStringCellValue().contains("FINAL_GATE"));
-            assertEquals(CellType.STRING, issueRow.getCell(3).getCellType());
-            assertEquals("=unsafe-looking summary", issueRow.getCell(3).getStringCellValue());
+            var failedRow = sheet.getRow(1);
+            assertEquals(10, failedRow.getCell(0).getNumericCellValue());
+            assertEquals("10002", failedRow.getCell(1).getStringCellValue());
+            assertEquals("PAY-102", failedRow.getCell(2).getStringCellValue());
+            assertNotNull(failedRow.getCell(2).getHyperlink());
+            assertEquals(CellType.STRING, failedRow.getCell(3).getCellType());
+            assertEquals("=unsafe summary", failedRow.getCell(3).getStringCellValue());
+            assertEquals("Asha Rao", failedRow.getCell(4).getStringCellValue());
+            assertEquals("In Progress", failedRow.getCell(5).getStringCellValue());
+            assertEquals("FAIL", failedRow.getCell(6).getStringCellValue());
+            assertTrue(failedRow.getCell(7).getStringCellValue().contains("Coding Status"));
 
-            var summarySheet = workbook.getSheet("Run Summary");
-            assertEquals("Generated at (UTC)", summarySheet.getRow(2).getCell(0).getStringCellValue());
-            assertEquals("2026-10-22T23:30Z", summarySheet.getRow(2).getCell(1).getStringCellValue());
-            assertEquals("Declared sprint day", summarySheet.getRow(3).getCell(0).getStringCellValue());
-            assertEquals(7, summarySheet.getRow(3).getCell(1).getNumericCellValue());
-
-            Set<String> obsoleteLabels = Set.of("Execution Date", "Effective Policy Date",
-                    "Sprint Start Date", "Sprint Time Zone");
-            for (Row row : summarySheet) {
-                if (row.getCell(0) != null && row.getCell(0).getCellType() == CellType.STRING) {
-                    assertTrue(!obsoleteLabels.contains(row.getCell(0).getStringCellValue()));
-                }
-            }
-
-            var detailSheet = workbook.getSheet("Check Details");
-            var detailHeader = detailSheet.getRow(0);
-            assertEquals(20, detailHeader.getLastCellNum());
-            assertEquals("Generated At (UTC)", detailHeader.getCell(0).getStringCellValue());
-            assertEquals("Declared Sprint Day", detailHeader.getCell(1).getStringCellValue());
-            var detailRow = detailSheet.getRow(1);
-            assertEquals("2026-10-22T23:30Z", detailRow.getCell(0).getStringCellValue());
-            assertEquals(7, detailRow.getCell(1).getNumericCellValue());
-            assertEquals("customfield_10101", detailRow.getCell(15).getStringCellValue());
-            assertEquals("FAIL", detailRow.getCell(18).getStringCellValue());
-
-            var linkedRow = workbook.getSheet("Linked Issues").getRow(1);
-            assertEquals("10002", linkedRow.getCell(0).getStringCellValue());
-            assertEquals("20007", linkedRow.getCell(4).getStringCellValue());
-            assertEquals("BUG-7", linkedRow.getCell(5).getStringCellValue());
-            assertEquals("Dev One", linkedRow.getCell(9).getStringCellValue());
-            assertEquals("completed", linkedRow.getCell(12).getStringCellValue());
-            assertEquals("PASS", linkedRow.getCell(16).getStringCellValue());
-
-            assertEquals(1,
-                    summarySheet.getRow(11).getCell(1).getNumericCellValue());
+            var passedRow = sheet.getRow(2);
+            assertEquals("PASS", passedRow.getCell(6).getStringCellValue());
+            assertTrue(passedRow.getCell(7).getStringCellValue().contains("Not Applicable evidence"));
         }
     }
 }

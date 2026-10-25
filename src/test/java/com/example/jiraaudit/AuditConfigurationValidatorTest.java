@@ -2,6 +2,7 @@ package com.example.jiraaudit;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -10,153 +11,286 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuditConfigurationValidatorTest {
-
     @Test
-    void acceptsValidFinalGate() {
-        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(
-                new AuditProperties.FinalGate(10, List.of("Bug", "Task"),
-                        List.of("completed", "done")))));
+    void acceptsSimpleCheckpointConfiguration() {
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(3)));
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(10)));
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(12)));
     }
 
     @Test
-    void requiresExplicitRunDay() {
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> AuditConfigurationValidator.validatePolicy(properties(
-                        validFinalGate(), validDays(), null)));
-
-        assertTrue(error.getMessage().contains("audit.run-day is required"));
-    }
-
-    @Test
-    void rejectsNonPositiveRunDay() {
-        for (int runDay : List.of(0, -1)) {
-            IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                    () -> AuditConfigurationValidator.validatePolicy(properties(
-                            validFinalGate(), validDays(), runDay)));
-            assertTrue(error.getMessage().contains("audit.run-day must be >= 1"));
-        }
-    }
-
-    @Test
-    void acceptsDeclaredCheckpointsAndDaysAfterFinalGate() {
-        for (int runDay : List.of(1, 3, 7, 10, 11)) {
-            assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties(
-                    validFinalGate(), validDays(), runDay)), "run day " + runDay);
-        }
-    }
-
-    @Test
-    void requiresFinalGate() {
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+    void requiresExplicitSupportedRunDay() {
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(properties(null)));
+        assertTrue(missing.getMessage().contains("audit.run-day is required"));
 
-        assertTrue(error.getMessage().contains("audit.final-gate is required"));
-    }
-
-    @Test
-    void requiresPositiveFinalGateStartDay() {
-        for (Integer fromDay : new Integer[]{null, 0, -1}) {
-            IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                    () -> AuditConfigurationValidator.validatePolicy(properties(
-                            new AuditProperties.FinalGate(fromDay, List.of("Bug"), List.of("completed")))));
-            assertTrue(error.getMessage().contains("from-day must be >= 1"));
+        for (int day : List.of(-1, 0, 2, 4, 8, 9)) {
+            IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class,
+                    () -> AuditConfigurationValidator.validatePolicy(properties(day)));
+            assertTrue(invalid.getMessage().contains("must be 1, 3, 7"));
         }
     }
 
     @Test
-    void requiresLinkedIssueTypes() {
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of(), List.of("completed")),
-                "linked-issue-types must not be empty");
-        assertInvalidList(new AuditProperties.FinalGate(10, null, List.of("completed")),
-                "linked-issue-types must not be empty");
-    }
+    void everyFieldMustDefineAllFourExactCheckpoints() {
+        Map<String, AuditProperties.FieldRule> fields = Map.of("coding-status",
+                new AuditProperties.FieldRule("Coding Status", "customfield_10101",
+                        Map.of(1, List.of("Started"), 3, List.of("In Progress"),
+                                10, List.of("Done"))));
 
-    @Test
-    void rejectsBlankAndCaseInsensitiveDuplicateLinkedIssueTypes() {
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of("Bug", "  "),
-                        List.of("completed")),
-                "linked-issue-types entry");
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of("Bug", " bug "),
-                        List.of("completed")),
-                "Duplicate value in audit.final-gate.linked-issue-types");
-    }
-
-    @Test
-    void requiresCompletedStatusCategoryKeys() {
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of("Bug"), null),
-                "completed-status-category-keys must not be empty");
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of("Bug"), List.of()),
-                "completed-status-category-keys must not be empty");
-    }
-
-    @Test
-    void rejectsBlankAndCaseInsensitiveDuplicateCompletedStatusCategoryKeys() {
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of("Bug"),
-                        List.of("completed", " ")),
-                "completed-status-category-keys entry");
-        assertInvalidList(new AuditProperties.FinalGate(10, List.of("Bug"),
-                        List.of("completed", " COMPLETED ")),
-                "Duplicate value in audit.final-gate.completed-status-category-keys");
-    }
-
-    @Test
-    void requiresAnExplicitExpectationOnTheFinalGateDay() {
-        var finalGate = new AuditProperties.FinalGate(10, List.of("Bug"), List.of("completed"));
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> AuditConfigurationValidator.validatePolicy(properties(finalGate,
-                        Map.of(1, List.of("Started"), 7, List.of("Done")))));
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(3, fields, validArtifacts())));
 
-        assertTrue(error.getMessage().contains("Day 10 final-gate expectation required for download"));
+        assertTrue(error.getMessage().contains("exactly Day 1, 3, 7 and 10"));
     }
 
     @Test
-    void rejectsRulesAfterTheFinalGateBecauseTheGateValueIsPinned() {
-        var finalGate = new AuditProperties.FinalGate(10, List.of("Bug"), List.of("completed"));
+    void artifactRequirementsMustDefineEveryCheckpoint() {
+        AuditProperties.Artifacts artifacts = new AuditProperties.Artifacts(
+                Map.of(3, List.of("WBS_"), 10, List.of("WBS_")), Map.of());
+
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> AuditConfigurationValidator.validatePolicy(properties(finalGate,
-                        Map.of(1, List.of("Started"), 10, List.of("Done"), 11, List.of("Started")))));
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(3, validFields(), artifacts)));
 
-        assertTrue(error.getMessage().contains("Day rules after the final gate are not allowed"));
+        assertTrue(error.getMessage().contains("required-by-day must define exactly"));
     }
 
-    private void assertInvalidList(AuditProperties.FinalGate finalGate, String messagePart) {
+    @Test
+    void dayThreeAndDayTenArtifactsMustBeConfigured() {
+        AuditProperties.Artifacts missingDayThree = new AuditProperties.Artifacts(
+                Map.of(1, List.of(), 3, List.of(), 7, List.of(), 10, List.of("WBS_")), Map.of());
+        IllegalArgumentException dayThreeError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(3, validFields(), missingDayThree)));
+        assertTrue(dayThreeError.getMessage().contains("Day 3 WBS"));
+
+        AuditProperties.Artifacts missingDayTen = new AuditProperties.Artifacts(
+                Map.of(1, List.of(), 3, List.of("WBS_"), 7, List.of(), 10, List.of()), Map.of());
+        IllegalArgumentException dayTenError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(10, validFields(), missingDayTen)));
+        assertTrue(dayTenError.getMessage().contains("Day 10 must check"));
+    }
+
+    @Test
+    void daysOneAndSevenHaveNoArtifactsAndWbsHasNoException() {
+        AuditProperties.Artifacts dayOneArtifact = new AuditProperties.Artifacts(
+                Map.of(1, List.of("WBS_"), 3, List.of("WBS_"), 7, List.of(),
+                        10, List.of("WBS_")), Map.of());
+        IllegalArgumentException earlyError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(1, validFields(), dayOneArtifact)));
+        assertTrue(earlyError.getMessage().contains("Days 1 and 7"));
+
+        AuditProperties.Artifacts wbsException = new AuditProperties.Artifacts(
+                Map.of(1, List.of(), 3, List.of("WBS_"), 7, List.of(),
+                        10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_")),
+                Map.of("WBS_", new AuditProperties.MissingArtifactRule(
+                        null, null, "WBS Not Applicable")));
+        IllegalArgumentException wbsError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(10, validFields(), wbsException)));
+        assertTrue(wbsError.getMessage().contains("cannot have a missing exception"));
+    }
+
+    @Test
+    void missingArtifactExceptionMustReferenceARequiredPrefix() {
+        var exceptions = Map.of("UNKNOWN_", new AuditProperties.MissingArtifactRule(
+                null, null, "Unknown Not Applicable"));
+        AuditProperties.Artifacts artifacts = new AuditProperties.Artifacts(
+                validArtifactDays(), exceptions);
+
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> AuditConfigurationValidator.validatePolicy(properties(finalGate)));
-        assertTrue(error.getMessage().contains(messagePart), error::getMessage);
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(10, validFields(), artifacts)));
+
+        assertTrue(error.getMessage().contains("not required on any day"));
     }
 
-    private AuditProperties properties(AuditProperties.FinalGate finalGate) {
-        return properties(finalGate, validDays());
+    @Test
+    void exceptionRequiresCommentAndCompleteOptionalFieldCondition() {
+        Map<String, AuditProperties.MissingArtifactRule> missingComment = Map.of("CWC_",
+                new AuditProperties.MissingArtifactRule("coding-status",
+                        List.of("No Code Changes"), " "));
+        IllegalArgumentException commentError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), missingComment))));
+        assertTrue(commentError.getMessage().contains("comment-contains"));
+
+        Map<String, AuditProperties.MissingArtifactRule> incompleteField = Map.of("CWC_",
+                new AuditProperties.MissingArtifactRule("coding-status", null,
+                        "CWC Not Applicable"));
+        IllegalArgumentException fieldError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), incompleteField))));
+        assertTrue(fieldError.getMessage().contains("Both field-rule and field-values"));
     }
 
-    private AuditProperties properties(AuditProperties.FinalGate finalGate,
-                                       Map<Integer, List<String>> days) {
-        return properties(finalGate, days, 1);
+    @Test
+    void exceptionFieldRuleMustExist() {
+        Map<String, AuditProperties.MissingArtifactRule> exceptions = Map.of("CWC_",
+                new AuditProperties.MissingArtifactRule("unknown-field", List.of("N/A"),
+                        "CWC Not Applicable"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), exceptions))));
+
+        assertTrue(error.getMessage().contains("Unknown field-rule"));
     }
 
-    private AuditProperties properties(AuditProperties.FinalGate finalGate,
-                                       Map<Integer, List<String>> days,
-                                       Integer runDay) {
+    @Test
+    void dayThreeMustUseWbsAndDayTenCannotOmitNamedArtifacts() {
+        AuditProperties.Artifacts wrongDayThree = new AuditProperties.Artifacts(
+                Map.of(1, List.of(), 3, List.of("DESIGN_"), 7, List.of(),
+                        10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_")),
+                validExceptions());
+        IllegalArgumentException dayThreeError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(3, validFields(), wrongDayThree)));
+        assertTrue(dayThreeError.getMessage().contains("Day 3 must check only the WBS_"));
+
+        AuditProperties.Artifacts missingSt = new AuditProperties.Artifacts(
+                Map.of(1, List.of(), 3, List.of("WBS_"), 7, List.of(),
+                        10, List.of("WBS_", "CWC_", "UT_", "ATDD_")),
+                validExceptions());
+        IllegalArgumentException dayTenError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(10, validFields(), missingSt)));
+        assertTrue(dayTenError.getMessage().contains("missing: ST_"));
+    }
+
+    @Test
+    void allFourNotApplicableRulesAreMandatory() {
+        Map<String, AuditProperties.MissingArtifactRule> missingAtdd = new LinkedHashMap<>(validExceptions());
+        missingAtdd.remove("ATDD_");
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), missingAtdd))));
+
+        assertTrue(error.getMessage().contains("ATDD_ not-applicable rule"));
+    }
+
+    @Test
+    void namedExceptionsCannotWeakenRequiredEvidence() {
+        Map<String, AuditProperties.MissingArtifactRule> wrongCwc =
+                new LinkedHashMap<>(validExceptions());
+        wrongCwc.put("CWC_", new AuditProperties.MissingArtifactRule(
+                "coding-status", List.of("Done"), "CWC Not Applicable"));
+        IllegalArgumentException cwcError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), wrongCwc))));
+        assertTrue(cwcError.getMessage().contains("CWC_ field-values must be exactly"));
+
+        Map<String, AuditProperties.MissingArtifactRule> wrongUt =
+                new LinkedHashMap<>(validExceptions());
+        wrongUt.put("UT_", new AuditProperties.MissingArtifactRule(
+                "coding-status", List.of("No Code Changes"), "UT Not Applicable"));
+        IllegalArgumentException utError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), wrongUt))));
+        assertTrue(utError.getMessage().contains("UT_ must use only"));
+
+        Map<String, AuditProperties.MissingArtifactRule> wrongSt =
+                new LinkedHashMap<>(validExceptions());
+        wrongSt.put("ST_", new AuditProperties.MissingArtifactRule(
+                "coding-status", List.of("Not Applicable"), "ST Not Applicable"));
+        IllegalArgumentException stError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(validArtifactDays(), wrongSt))));
+        assertTrue(stError.getMessage().contains("ST_ field-rule must be"));
+    }
+
+    @Test
+    void extraCompanyArtifactsAreAllowedButCannotBeWaived() {
+        Map<Integer, List<String>> daysWithDesign = Map.of(
+                1, List.of(), 3, List.of("WBS_"), 7, List.of(),
+                10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_", "DESIGN_"));
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
+                properties(10, validFields(),
+                        new AuditProperties.Artifacts(daysWithDesign, validExceptions()))));
+
+        Map<String, AuditProperties.MissingArtifactRule> exceptionsWithDesign =
+                new LinkedHashMap<>(validExceptions());
+        exceptionsWithDesign.put("DESIGN_", new AuditProperties.MissingArtifactRule(
+                null, null, "Design Not Applicable"));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(properties(10, validFields(),
+                        new AuditProperties.Artifacts(daysWithDesign, exceptionsWithDesign))));
+        assertTrue(error.getMessage().contains("Only CWC_, UT_, ATDD_ and ST_"));
+    }
+
+    @Test
+    void dayTenFieldValuesMustAllowTheCwcAndStExceptions() {
+        Map<String, AuditProperties.FieldRule> fieldsWithoutNoCodeChanges =
+                new LinkedHashMap<>(validFields());
+        fieldsWithoutNoCodeChanges.put("coding-status", new AuditProperties.FieldRule(
+                "Coding Status", "customfield_10101",
+                Map.of(1, List.of("Started"), 3, List.of("In Progress"),
+                        7, List.of("Done"), 10, List.of("Done"))));
+        IllegalArgumentException codingError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(10, fieldsWithoutNoCodeChanges, validArtifacts())));
+        assertTrue(codingError.getMessage().contains("coding-status must include: No Code Changes"));
+
+        Map<String, AuditProperties.FieldRule> fieldsWithoutNotApplicable =
+                new LinkedHashMap<>(validFields());
+        fieldsWithoutNotApplicable.put("st-status", new AuditProperties.FieldRule(
+                "ST Status", "customfield_10102",
+                Map.of(1, List.of("Not Started"), 3, List.of("In Progress"),
+                        7, List.of("Done"), 10, List.of("Done"))));
+        IllegalArgumentException stError = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        properties(10, fieldsWithoutNotApplicable, validArtifacts())));
+        assertTrue(stError.getMessage().contains("st-status must include: Not Applicable"));
+    }
+
+    private AuditProperties properties(Integer day) {
+        return properties(day, validFields(), validArtifacts());
+    }
+
+    private AuditProperties properties(Integer day, Map<String, AuditProperties.FieldRule> fields,
+                                       AuditProperties.Artifacts artifacts) {
         return new AuditProperties(
                 new AuditProperties.Jira("https://test.atlassian.net", "audit@example.com", "token"),
-                "project = TEST",
-                runDay,
-                100,
-                Map.of("download", new AuditProperties.FieldRule(
-                        "Download", "customfield_10101", days,
-                        List.of("Done"))),
-                new AuditProperties.Artifacts(true, List.of("WBS_")),
-                finalGate,
+                "project = TEST", day, 100, fields, artifacts,
                 new AuditProperties.Report("target/reports", true, true));
     }
 
-    private AuditProperties.FinalGate validFinalGate() {
-        return new AuditProperties.FinalGate(10, List.of("Bug", "Task"),
-                List.of("completed", "done"));
+    private Map<String, AuditProperties.FieldRule> validFields() {
+        return Map.of(
+                "coding-status", new AuditProperties.FieldRule(
+                        "Coding Status", "customfield_10101",
+                        Map.of(1, List.of("Started"), 3, List.of("In Progress"),
+                                7, List.of("Done"), 10, List.of("Done", "No Code Changes"))),
+                "st-status", new AuditProperties.FieldRule(
+                        "ST Status", "customfield_10102",
+                        Map.of(1, List.of("Not Started"), 3, List.of("In Progress"),
+                                7, List.of("Done"), 10, List.of("Done", "Not Applicable"))));
     }
 
-    private Map<Integer, List<String>> validDays() {
-        return Map.of(1, List.of("Started"), 3, List.of("In Progress"),
-                7, List.of("Done"), 10, List.of("Done"));
+    private AuditProperties.Artifacts validArtifacts() {
+        return new AuditProperties.Artifacts(validArtifactDays(), validExceptions());
+    }
+
+    private Map<String, AuditProperties.MissingArtifactRule> validExceptions() {
+        Map<String, AuditProperties.MissingArtifactRule> exceptions = new LinkedHashMap<>();
+        exceptions.put("CWC_", new AuditProperties.MissingArtifactRule(
+                "coding-status", List.of("No Code Changes"), "CWC Not Applicable"));
+        exceptions.put("UT_", new AuditProperties.MissingArtifactRule(
+                null, null, "UT Not Applicable"));
+        exceptions.put("ATDD_", new AuditProperties.MissingArtifactRule(
+                null, null, "ATDD Not Applicable"));
+        exceptions.put("ST_", new AuditProperties.MissingArtifactRule(
+                "st-status", List.of("Not Applicable"), "ST Not Applicable"));
+        return exceptions;
+    }
+
+    private Map<Integer, List<String>> validArtifactDays() {
+        return Map.of(1, List.of(), 3, List.of("WBS_"), 7, List.of(),
+                10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_"));
     }
 }

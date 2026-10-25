@@ -13,15 +13,14 @@ public record AuditProperties(
         Integer pageSize,
         Map<String, FieldRule> fields,
         Artifacts artifacts,
-        FinalGate finalGate,
         Report report
 ) {
     public record Jira(String baseUrl, String email, String apiToken) { }
     public record FieldRule(String label, String jiraField,
-                            Map<Integer, List<String>> days,
-                            List<String> whenResolved) { }
-    public record Artifacts(Boolean onlyForResolved, List<String> prefixes) { }
-    public record FinalGate(Integer fromDay, List<String> linkedIssueTypes,
-                            List<String> completedStatusCategoryKeys) { }
+                            Map<Integer, List<String>> days) { }
+    public record Artifacts(Map<Integer, List<String>> requiredByDay,
+                            Map<String, MissingArtifactRule> missingExceptions) { }
+    public record MissingArtifactRule(String fieldRule, List<String> fieldValues,
+                                      String commentContains) { }
     public record Report(String directory, Boolean failOnViolations, Boolean failOnEmpty) { }
 }

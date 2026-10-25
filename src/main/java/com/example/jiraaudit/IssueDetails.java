@@ -5,10 +5,7 @@ public record IssueDetails(
         String jiraId,
         String issueKey,
         String summary,
-        String issueType,
         String assigneeName,
         String assigneeAccountId,
-        String status,
-        String resolution,
-        boolean resolved
+        String status
 ) { }

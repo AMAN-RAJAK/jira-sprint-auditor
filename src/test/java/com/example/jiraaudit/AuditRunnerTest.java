@@ -1,9 +1,11 @@
 package com.example.jiraaudit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -27,179 +29,159 @@ class AuditRunnerTest {
     Path tempDirectory;
 
     @Test
-    void requestsTrackingMetadataAndWritesPassingDaySevenWorkbook() throws Exception {
-        AuditProperties properties = properties(true);
-
+    void dayThreeRunsJqlChecksOnlyWbsAndWritesOneGridWorkbook() throws Exception {
+        AuditProperties properties = properties(3, true);
         var fields = MAPPER.readTree("""
-                {"summary":"Ship audit","issuetype":{"name":"Story"},
-                 "assignee":{"displayName":"Asha Rao","accountId":"abc-123"},
-                 "status":{"name":"Done"},"resolution":{"name":"Fixed"},
-                 "customfield_10101":{"value":"Done"},
-                 "attachment":[{"filename":"WBS_scope.xlsx"},{"filename":"CWC_review.pdf"},
-                               {"filename":"UT_results.xlsx"}]}
+                {"summary":"Ship audit","assignee":{"displayName":"Asha Rao","accountId":"abc-123"},
+                 "status":{"name":"In Progress"},"coding":"In Progress","st":"In Progress",
+                 "attachment":[{"filename":"WBS_scope.xlsx"}]}
                 """);
         AtomicReference<Set<String>> requested = new AtomicReference<>();
         JiraClient client = (jql, requestedFields, pageSize) -> {
             requested.set(Set.copyOf(requestedFields));
             return List.of(new JiraClient.JiraIssue("10002", "PAY-102", fields));
         };
-        Clock clock = Clock.fixed(Instant.parse("2026-10-25T06:30:00Z"), ZoneOffset.UTC);
-        AuditRunner runner = new AuditRunner(properties, client, new PolicyEvaluator(),
-                new ExcelReportWriter(clock));
+        AuditRunner runner = runner(properties, client);
 
         runner.run(null);
 
         assertEquals(0, runner.exitCode());
-        assertTrue(requested.get().containsAll(Set.of("summary", "issuetype", "assignee", "status",
-                "resolution", "attachment", "customfield_10101")));
-        try (var files = Files.list(tempDirectory)) {
-            assertEquals(1, files.filter(path -> path.getFileName().toString().endsWith(".xlsx")).count());
+        assertTrue(requested.get().containsAll(Set.of(
+                "summary", "assignee", "status", "attachment", "coding", "st")));
+        Path report = onlyWorkbook();
+        try (InputStream input = Files.newInputStream(report);
+             XSSFWorkbook workbook = new XSSFWorkbook(input)) {
+            assertEquals(1, workbook.getNumberOfSheets());
+            assertEquals("Audit Results", workbook.getSheetAt(0).getSheetName());
+            assertEquals("PASS", workbook.getSheetAt(0).getRow(1).getCell(6).getStringCellValue());
         }
     }
 
     @Test
-    void usesExplicitDayThreeWithoutAnyCalendarCalculation() throws Exception {
-        AuditProperties properties = properties(true, 3);
+    void dayTenFetchesCommentsOnlyAfterExceptionEligibleArtifactIsMissing() throws Exception {
+        AuditProperties properties = properties(10, true);
         var fields = MAPPER.readTree("""
-                {"summary":"Ship audit","issuetype":{"name":"Story"},
-                 "assignee":{"displayName":"Asha Rao","accountId":"abc-123"},
-                 "status":{"name":"In Progress"},"resolution":null,
-                 "customfield_10101":{"value":"In Progress"},"attachment":[]}
+                {"summary":"No code story","assignee":{"displayName":"Asha Rao"},
+                 "status":{"name":"Done"},"coding":"No Code Changes","st":"Done",
+                 "attachment":[{"filename":"WBS_scope"},{"filename":"UT_results"},
+                   {"filename":"ATDD_evidence"},{"filename":"ST_results"}]}
                 """);
-        AtomicInteger calls = new AtomicInteger();
-        AtomicReference<Set<String>> requested = new AtomicReference<>();
-        JiraClient client = (jql, requestedFields, pageSize) -> {
-            calls.incrementAndGet();
-            requested.set(Set.copyOf(requestedFields));
-            return List.of(new JiraClient.JiraIssue("10002", "PAY-102", fields));
+        AtomicInteger commentCalls = new AtomicInteger();
+        JiraClient client = new JiraClient() {
+            @Override
+            public List<JiraIssue> searchAll(String jql, Set<String> requestedFields, int pageSize) {
+                return List.of(new JiraIssue("10002", "PAY-102", fields));
+            }
+
+            @Override
+            public List<JiraComment> getCommentsNewestFirst(String issueKey, int pageSize) {
+                commentCalls.incrementAndGet();
+                return List.of(new JiraComment("9", MAPPER.getNodeFactory()
+                        .textNode("CWC Not Applicable"), Instant.parse("2026-10-25T08:00:00Z")));
+            }
         };
-        // This timestamp intentionally has no relationship to the declared sprint day.
-        Clock clock = Clock.fixed(Instant.parse("2040-01-01T23:59:59Z"), ZoneOffset.UTC);
-        AuditRunner runner = new AuditRunner(properties, client, new PolicyEvaluator(),
-                new ExcelReportWriter(clock));
+        AuditRunner runner = runner(properties, client);
 
         runner.run(null);
 
+        assertEquals(1, commentCalls.get());
         assertEquals(0, runner.exitCode());
-        assertEquals(1, calls.get());
-        assertTrue(!requested.get().contains("issuelinks"));
-        try (var files = Files.list(tempDirectory)) {
-            assertEquals(1, files.filter(path -> path.getFileName().toString()
-                    .startsWith("jira-audit-day3-")).count());
+        try (InputStream input = Files.newInputStream(onlyWorkbook());
+             XSSFWorkbook workbook = new XSSFWorkbook(input)) {
+            var row = workbook.getSheet("Audit Results").getRow(1);
+            assertEquals("PASS", row.getCell(6).getStringCellValue());
+            assertTrue(row.getCell(7).getStringCellValue().contains("Not Applicable evidence"));
         }
     }
 
     @Test
-    void missingRunDayStopsBeforeJiraAccessOrWorkbookCreation() throws Exception {
-        AuditProperties properties = properties(true, null);
-        AtomicInteger calls = new AtomicInteger();
-        JiraClient client = (jql, requestedFields, pageSize) -> {
-            calls.incrementAndGet();
+    void missingRunDayStopsBeforeJiraOrReportAccess() throws Exception {
+        AuditProperties properties = properties(null, true);
+        AtomicInteger searchCalls = new AtomicInteger();
+        JiraClient client = (jql, fields, pageSize) -> {
+            searchCalls.incrementAndGet();
             return List.of();
         };
-        Clock clock = Clock.fixed(Instant.parse("2026-10-22T06:30:00Z"), ZoneOffset.UTC);
-        AuditRunner runner = new AuditRunner(properties, client, new PolicyEvaluator(),
-                new ExcelReportWriter(clock));
+        AuditRunner runner = runner(properties, client);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> runner.run(null));
 
         assertTrue(error.getMessage().contains("audit.run-day is required"));
-        assertEquals(0, calls.get());
+        assertEquals(0, searchCalls.get());
         try (var files = Files.list(tempDirectory)) {
-            assertEquals(0, files.filter(path -> path.getFileName().toString().endsWith(".xlsx")).count());
+            assertEquals(0, files.count());
         }
     }
 
     @Test
-    void rejectsEmptyJqlScopeByDefault() {
-        AuditProperties properties = properties(true);
-        JiraClient emptyClient = (jql, requestedFields, pageSize) -> List.of();
-        Clock clock = Clock.fixed(Instant.parse("2026-10-22T06:30:00Z"), ZoneOffset.UTC);
-        AuditRunner runner = new AuditRunner(properties, emptyClient, new PolicyEvaluator(),
-                new ExcelReportWriter(clock));
+    void failedCheckWritesWorkbookAndSetsExitCodeTwo() throws Exception {
+        AuditProperties properties = properties(3, true);
+        var fields = MAPPER.readTree("""
+                {"summary":"Missing WBS","assignee":null,"status":{"name":"In Progress"},
+                 "coding":"Started","st":"In Progress","attachment":[]}
+                """);
+        JiraClient client = (jql, requestedFields, pageSize) ->
+                List.of(new JiraClient.JiraIssue("10003", "PAY-103", fields));
+        AuditRunner runner = runner(properties, client);
 
-        IllegalStateException error = assertThrows(IllegalStateException.class, () -> runner.run(null));
+        runner.run(null);
+
+        assertEquals(2, runner.exitCode());
+        try (InputStream input = Files.newInputStream(onlyWorkbook());
+             XSSFWorkbook workbook = new XSSFWorkbook(input)) {
+            var row = workbook.getSheet("Audit Results").getRow(1);
+            assertEquals("FAIL", row.getCell(6).getStringCellValue());
+            assertTrue(row.getCell(7).getStringCellValue().contains("WBS_"));
+        }
+    }
+
+    @Test
+    void emptyJqlScopeFailsByDefault() {
+        AuditRunner runner = runner(properties(3, true),
+                (jql, requestedFields, pageSize) -> List.of());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> runner.run(null));
 
         assertTrue(error.getMessage().contains("no issues"));
     }
 
-    @Test
-    void dayTenLoadsLinkedIssuesAndFailsForAnOpenBugWhileStillWritingWorkbook() throws Exception {
-        AuditProperties properties = properties(true, 10);
-        var parentFields = MAPPER.readTree("""
-                {"summary":"Ship audit","issuetype":{"name":"Story"},
-                 "assignee":{"displayName":"Asha Rao","accountId":"abc-123"},
-                 "status":{"name":"Done"},"resolution":{"name":"Fixed"},
-                 "customfield_10101":{"value":"Done"},
-                 "attachment":[{"filename":"WBS_scope.xlsx"},{"filename":"CWC_review.pdf"},
-                               {"filename":"UT_results.xlsx"}],
-                 "issuelinks":[{"type":{"name":"blocks"},
-                   "outwardIssue":{"id":"20007","key":"BUG-7"}}]}
-                """);
-        var bugFields = MAPPER.readTree("""
-                {"summary":"Fix payment defect","issuetype":{"name":"Bug"},
-                 "assignee":{"displayName":"Dev One","accountId":"dev-1"},
-                 "status":{"name":"In Progress","statusCategory":{"key":"indeterminate"}},
-                 "resolution":null}
-                """);
-        AtomicInteger calls = new AtomicInteger();
-        AtomicReference<Set<String>> primaryFields = new AtomicReference<>();
-        AtomicReference<String> linkedJql = new AtomicReference<>();
-        AtomicReference<Set<Long>> reconciledIds = new AtomicReference<>();
-        JiraClient client = new JiraClient() {
-            @Override
-            public List<JiraClient.JiraIssue> searchAll(String jql, Set<String> requestedFields, int pageSize) {
-                calls.incrementAndGet();
-                assertEquals(properties.jql(), jql);
-                primaryFields.set(Set.copyOf(requestedFields));
-                return List.of(new JiraClient.JiraIssue("10002", "PAY-102", parentFields));
-            }
+    private AuditRunner runner(AuditProperties properties, JiraClient client) {
+        Clock clock = Clock.fixed(Instant.parse("2026-10-25T06:30:00Z"), ZoneOffset.UTC);
+        return new AuditRunner(properties, client, new PolicyEvaluator(), new ExcelReportWriter(clock));
+    }
 
-            @Override
-            public List<JiraClient.JiraIssue> searchAll(String jql, Set<String> requestedFields, int pageSize,
-                                                        Set<Long> reconcileIssueIds) {
-                calls.incrementAndGet();
-                linkedJql.set(jql);
-                reconciledIds.set(Set.copyOf(reconcileIssueIds));
-                assertEquals(Set.of("summary", "issuetype", "assignee", "status", "resolution"),
-                        requestedFields);
-                return List.of(new JiraClient.JiraIssue("20007", "BUG-7", bugFields));
-            }
-        };
-        Clock clock = Clock.fixed(Instant.parse("2026-10-28T06:30:00Z"), ZoneOffset.UTC);
-        AuditRunner runner = new AuditRunner(properties, client, new PolicyEvaluator(),
-                new ExcelReportWriter(clock));
-
-        runner.run(null);
-
-        assertEquals(2, calls.get());
-        assertTrue(primaryFields.get().contains("issuelinks"));
-        assertEquals("key in (BUG-7) ORDER BY key ASC", linkedJql.get());
-        assertEquals(Set.of(20007L), reconciledIds.get());
-        assertEquals(2, runner.exitCode());
+    private Path onlyWorkbook() throws Exception {
         try (var files = Files.list(tempDirectory)) {
-            assertEquals(1, files.filter(path -> path.getFileName().toString().endsWith(".xlsx")).count());
+            return files.filter(path -> path.getFileName().toString().endsWith(".xlsx"))
+                    .findFirst().orElseThrow();
         }
     }
 
-    private AuditProperties properties(boolean failOnEmpty) {
-        return properties(failOnEmpty, 7);
-    }
+    private AuditProperties properties(Integer runDay, boolean failOnEmpty) {
+        Map<String, AuditProperties.FieldRule> fields = new LinkedHashMap<>();
+        fields.put("coding-status", new AuditProperties.FieldRule("Coding Status", "coding",
+                Map.of(1, List.of("Started"), 3, List.of("In Progress"), 7, List.of("Done"),
+                        10, List.of("Done", "No Code Changes"))));
+        fields.put("st-status", new AuditProperties.FieldRule("ST Status", "st",
+                Map.of(1, List.of("Not Started"), 3, List.of("In Progress"), 7, List.of("Done"),
+                        10, List.of("Done", "Not Applicable"))));
 
-    private AuditProperties properties(boolean failOnEmpty, Integer runDay) {
-        Map<String, AuditProperties.FieldRule> rules = new LinkedHashMap<>();
-        rules.put("download", new AuditProperties.FieldRule("Download", "customfield_10101",
-                Map.of(1, List.of("Started"), 3, List.of("In Progress"),
-                        7, List.of("Done"), 10, List.of("Done")),
-                List.of("Done")));
+        Map<String, AuditProperties.MissingArtifactRule> exceptions = new LinkedHashMap<>();
+        exceptions.put("CWC_", new AuditProperties.MissingArtifactRule(
+                "coding-status", List.of("No Code Changes"), "CWC Not Applicable"));
+        exceptions.put("UT_", new AuditProperties.MissingArtifactRule(null, null, "UT Not Applicable"));
+        exceptions.put("ATDD_", new AuditProperties.MissingArtifactRule(null, null, "ATDD Not Applicable"));
+        exceptions.put("ST_", new AuditProperties.MissingArtifactRule(
+                "st-status", List.of("Not Applicable"), "ST Not Applicable"));
+
         return new AuditProperties(
                 new AuditProperties.Jira("https://example.atlassian.net", "audit@example.com", "token"),
-                "project = PAY AND sprint = 123",
-                runDay, 100, rules,
-                new AuditProperties.Artifacts(true, List.of("WBS_", "CWC_", "UT_")),
-                new AuditProperties.FinalGate(10, List.of("Bug", "Task"),
-                        List.of("completed", "done")),
+                "project = PAY AND sprint = 123", runDay, 100, fields,
+                new AuditProperties.Artifacts(Map.of(
+                        1, List.of(), 3, List.of("WBS_"), 7, List.of(),
+                        10, List.of("WBS_", "CWC_", "UT_", "ATDD_", "ST_")), exceptions),
                 new AuditProperties.Report(tempDirectory.toString(), true, failOnEmpty));
     }
 }

@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 public class ExcelReportWriter {
@@ -44,47 +45,69 @@ public class ExcelReportWriter {
         this.clock = clock;
     }
 
-    public record ReportContext(
-            int runDay,
-            String jql,
-            String jiraBaseUrl,
-            String outputDirectory
-    ) { }
+    public record ReportContext(int runDay, String jiraBaseUrl, String outputDirectory) { }
 
     public Path write(List<CheckResult> results, ReportContext context) throws IOException {
         Path directory = Path.of(context.outputDirectory());
         Files.createDirectories(directory);
         ZonedDateTime generatedAt = ZonedDateTime.now(clock.withZone(ZoneOffset.UTC));
-        Path file = directory.resolve("jira-audit-day" + context.runDay() + "-" +
-                generatedAt.format(FILE_STAMP) + "-" + UUID.randomUUID().toString().substring(0, 8) + ".xlsx");
-        Path temporaryFile = Files.createTempFile(directory, ".jira-audit-", ".xlsx.tmp");
+        Path report = directory.resolve("jira-audit-day" + context.runDay() + "-" +
+                generatedAt.format(FILE_STAMP) + "-" +
+                UUID.randomUUID().toString().substring(0, 8) + ".xlsx");
+        Path temporary = Files.createTempFile(directory, ".jira-audit-", ".xlsx.tmp");
 
         try {
             try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-                Styles styles = new Styles(workbook);
-                Map<String, List<CheckResult>> byIssue = groupByIssue(results);
-                writeRunSummary(workbook, styles, results, byIssue, context, generatedAt);
-                writeIssues(workbook, styles, byIssue, context.jiraBaseUrl());
-                writeLinkedIssues(workbook, styles, results, context.jiraBaseUrl());
-                writeChecks(workbook, styles, results, context, generatedAt);
-                workbook.setActiveSheet(0);
-                try (OutputStream output = Files.newOutputStream(temporaryFile,
+                writeGrid(workbook, results, context);
+                try (OutputStream output = Files.newOutputStream(temporary,
                         StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
                     workbook.write(output);
                 }
             }
-            moveCompletedReport(temporaryFile, file);
-            return file.toAbsolutePath();
+            moveCompletedReport(temporary, report);
+            return report.toAbsolutePath();
         } finally {
-            Files.deleteIfExists(temporaryFile);
+            Files.deleteIfExists(temporary);
         }
     }
 
-    private static void moveCompletedReport(Path temporaryFile, Path finalFile) throws IOException {
-        try {
-            Files.move(temporaryFile, finalFile, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException unsupported) {
-            Files.move(temporaryFile, finalFile);
+    private static void writeGrid(XSSFWorkbook workbook, List<CheckResult> results,
+                                  ReportContext context) {
+        Styles styles = new Styles(workbook);
+        Sheet sheet = workbook.createSheet("Audit Results");
+        String[] headers = {"Run Day", "Jira ID", "Jira Key", "Summary", "Assignee",
+                "Jira Status", "Audit Result", "Remarks"};
+        Row header = sheet.createRow(0);
+        header.setHeightInPoints(28);
+        for (int index = 0; index < headers.length; index++) {
+            cell(header, index, headers[index], styles.header);
+        }
+
+        int rowIndex = 1;
+        for (List<CheckResult> issueChecks : groupByIssue(results).values()) {
+            IssueDetails issue = issueChecks.get(0).issue();
+            List<CheckResult> failures = issueChecks.stream()
+                    .filter(check -> check.outcome() == CheckResult.Outcome.FAIL).toList();
+            boolean passed = failures.isEmpty();
+            String remarks = passed ? passRemarks(issueChecks) : failureRemarks(failures);
+            String issueUrl = issueUrl(context.jiraBaseUrl(), issue.issueKey());
+
+            Row row = sheet.createRow(rowIndex++);
+            numericCell(row, 0, context.runDay(), styles.normal);
+            cell(row, 1, issue.jiraId(), styles.normal);
+            hyperlinkCell(workbook, row, 2, issue.issueKey(), issueUrl, styles.hyperlink);
+            cell(row, 3, issue.summary(), styles.wrap);
+            cell(row, 4, issue.assigneeName(), styles.normal);
+            cell(row, 5, issue.status(), styles.normal);
+            cell(row, 6, passed ? "PASS" : "FAIL", passed ? styles.pass : styles.fail);
+            cell(row, 7, remarks, styles.wrap);
+        }
+
+        sheet.createFreezePane(0, 1);
+        sheet.setAutoFilter(new CellRangeAddress(0, Math.max(0, rowIndex - 1), 0, headers.length - 1));
+        int[] widths = {12, 16, 16, 60, 26, 20, 16, 100};
+        for (int index = 0; index < widths.length; index++) {
+            sheet.setColumnWidth(index, widths[index] * 256);
         }
     }
 
@@ -96,205 +119,27 @@ public class ExcelReportWriter {
         return grouped;
     }
 
-    private static void writeRunSummary(XSSFWorkbook workbook, Styles styles,
-                                        List<CheckResult> results,
-                                        Map<String, List<CheckResult>> byIssue,
-                                        ReportContext context,
-                                        ZonedDateTime generatedAt) {
-        Sheet sheet = workbook.createSheet("Run Summary");
-        Row title = sheet.createRow(0);
-        cell(title, 0, "Jira Sprint Compliance Audit", styles.title);
-        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 3));
-
-        List<CheckResult> controlResults = results.stream().filter(result -> !result.rollup()).toList();
-        long passes = controlResults.stream().filter(r -> r.outcome() == CheckResult.Outcome.PASS).count();
-        long failures = controlResults.stream().filter(r -> r.outcome() == CheckResult.Outcome.FAIL).count();
-        long skips = controlResults.stream().filter(r -> r.outcome() == CheckResult.Outcome.SKIP).count();
-        long nonCompliantIssues = byIssue.values().stream()
-                .filter(checks -> checks.stream().filter(c -> !c.rollup())
-                        .anyMatch(c -> c.outcome() == CheckResult.Outcome.FAIL))
-                .count();
-
-        int row = 2;
-        row = summaryRow(sheet, styles, row, "Generated at (UTC)", generatedAt.toString());
-        row = summaryRow(sheet, styles, row, "Declared sprint day", context.runDay());
-        row = summaryRow(sheet, styles, row, "JQL", context.jql());
-        row++;
-        row = summaryRow(sheet, styles, row, "Issues", byIssue.size());
-        row = summaryRow(sheet, styles, row, "Compliant issues", byIssue.size() - nonCompliantIssues);
-        row = summaryRow(sheet, styles, row, "Non-compliant issues", nonCompliantIssues);
-        row = summaryRow(sheet, styles, row, "Checks", controlResults.size());
-        row = summaryRow(sheet, styles, row, "Passed", passes);
-        row = summaryRow(sheet, styles, row, "Failed", failures);
-        summaryRow(sheet, styles, row, "Skipped", skips);
-
-        sheet.setColumnWidth(0, 28 * 256);
-        sheet.setColumnWidth(1, 100 * 256);
-        sheet.createFreezePane(0, 2);
+    private static String failureRemarks(List<CheckResult> failures) {
+        return failures.stream().map(check -> check.checkName() + ": " + check.reason() +
+                " [expected=" + check.expected() + "; actual=" + check.actual() + "]")
+                .collect(Collectors.joining("; "));
     }
 
-    private static int summaryRow(Sheet sheet, Styles styles, int rowIndex, String label, Object value) {
-        Row row = sheet.createRow(rowIndex);
-        cell(row, 0, label, styles.label);
-        if (value instanceof Number number) {
-            numericCell(row, 1, number.doubleValue(), styles.normal);
-        } else {
-            cell(row, 1, String.valueOf(value), styles.wrap);
-        }
-        return rowIndex + 1;
+    private static String passRemarks(List<CheckResult> checks) {
+        List<String> exceptions = checks.stream()
+                .filter(check -> check.checkType().equals("ARTIFACT"))
+                .filter(check -> check.actual().contains("attachment=<missing>"))
+                .map(check -> check.checkName() + ": " + check.reason())
+                .toList();
+        return exceptions.isEmpty() ? "All applicable checks passed" :
+                "PASS with Not Applicable evidence: " + String.join("; ", exceptions);
     }
 
-    private static void writeIssues(XSSFWorkbook workbook, Styles styles,
-                                    Map<String, List<CheckResult>> byIssue,
-                                    String jiraBaseUrl) {
-        Sheet sheet = workbook.createSheet("Issues");
-        String[] headers = {"Jira ID", "Jira Key", "Jira URL", "Summary", "Issue Type", "Assignee",
-                "Assignee Account ID", "Status", "Resolution", "Resolved", "Checks", "Passed", "Failed",
-                "Skipped", "Compliance", "Violations"};
-        header(sheet, headers, styles.header);
-
-        int rowIndex = 1;
-        for (List<CheckResult> checks : byIssue.values()) {
-            CheckResult first = checks.get(0);
-            IssueDetails issue = first.issue();
-            List<CheckResult> controlChecks = checks.stream().filter(check -> !check.rollup()).toList();
-            long passes = controlChecks.stream().filter(c -> c.outcome() == CheckResult.Outcome.PASS).count();
-            long failures = controlChecks.stream().filter(c -> c.outcome() == CheckResult.Outcome.FAIL).count();
-            long skips = controlChecks.stream().filter(c -> c.outcome() == CheckResult.Outcome.SKIP).count();
-            String violations = controlChecks.stream()
-                    .filter(c -> c.outcome() == CheckResult.Outcome.FAIL)
-                    .map(c -> c.checkType() + ": " + c.checkName() + " (" + c.reason() + ")")
-                    .collect(java.util.stream.Collectors.joining("; "));
-            String issueUrl = issueUrl(jiraBaseUrl, issue.issueKey());
-
-            Row row = sheet.createRow(rowIndex++);
-            cell(row, 0, issue.jiraId(), styles.normal);
-            hyperlinkCell(workbook, row, 1, issue.issueKey(), issueUrl, styles.hyperlink);
-            hyperlinkCell(workbook, row, 2, issueUrl, issueUrl, styles.hyperlink);
-            cell(row, 3, issue.summary(), styles.wrap);
-            cell(row, 4, issue.issueType(), styles.normal);
-            cell(row, 5, issue.assigneeName(), styles.normal);
-            cell(row, 6, issue.assigneeAccountId(), styles.normal);
-            cell(row, 7, issue.status(), styles.normal);
-            cell(row, 8, issue.resolution(), styles.normal);
-            cell(row, 9, Boolean.toString(issue.resolved()), styles.normal);
-            numericCell(row, 10, controlChecks.size(), styles.normal);
-            numericCell(row, 11, passes, styles.pass);
-            numericCell(row, 12, failures, failures > 0 ? styles.fail : styles.normal);
-            numericCell(row, 13, skips, styles.skip);
-            cell(row, 14, failures == 0 ? "COMPLIANT" : "NON-COMPLIANT",
-                    failures == 0 ? styles.pass : styles.fail);
-            cell(row, 15, violations, styles.wrap);
-        }
-        finishTabularSheet(sheet, headers.length, rowIndex - 1,
-                new int[]{16, 15, 44, 60, 18, 24, 30, 18, 18, 12, 10, 10, 10, 10, 18, 70});
-    }
-
-    private static void writeLinkedIssues(XSSFWorkbook workbook, Styles styles,
-                                          List<CheckResult> results, String jiraBaseUrl) {
-        Sheet sheet = workbook.createSheet("Linked Issues");
-        String[] headers = {"Parent Jira ID", "Parent Jira Key", "Parent Jira URL", "Parent Assignee",
-                "Linked Jira ID", "Linked Jira Key", "Linked Jira URL", "Linked Summary",
-                "Linked Issue Type", "Linked Assignee", "Linked Assignee Account ID", "Linked Status",
-                "Status Category", "Resolution", "Direction", "Link Type", "Outcome", "Reason"};
-        header(sheet, headers, styles.header);
-
-        int rowIndex = 1;
-        for (CheckResult result : results) {
-            LinkedIssueDetails linked = result.linkedIssue();
-            if (linked == null) continue;
-            IssueDetails parent = result.issue();
-            String parentUrl = issueUrl(jiraBaseUrl, parent.issueKey());
-            String linkedUrl = issueUrl(jiraBaseUrl, linked.issueKey());
-            Row row = sheet.createRow(rowIndex++);
-            cell(row, 0, parent.jiraId(), styles.normal);
-            hyperlinkCell(workbook, row, 1, parent.issueKey(), parentUrl, styles.hyperlink);
-            hyperlinkCell(workbook, row, 2, parentUrl, parentUrl, styles.hyperlink);
-            cell(row, 3, parent.assigneeName(), styles.normal);
-            cell(row, 4, linked.jiraId(), styles.normal);
-            hyperlinkCell(workbook, row, 5, linked.issueKey(), linkedUrl, styles.hyperlink);
-            hyperlinkCell(workbook, row, 6, linkedUrl, linkedUrl, styles.hyperlink);
-            cell(row, 7, linked.summary(), styles.wrap);
-            cell(row, 8, linked.issueType(), styles.normal);
-            cell(row, 9, linked.assigneeName(), styles.normal);
-            cell(row, 10, linked.assigneeAccountId(), styles.normal);
-            cell(row, 11, linked.status(), styles.normal);
-            cell(row, 12, linked.statusCategory(), styles.normal);
-            cell(row, 13, linked.resolution(), styles.normal);
-            cell(row, 14, linked.direction(), styles.normal);
-            cell(row, 15, linked.linkType(), styles.normal);
-            CellStyle outcomeStyle = switch (result.outcome()) {
-                case PASS -> styles.pass;
-                case FAIL -> styles.fail;
-                case SKIP -> styles.skip;
-            };
-            cell(row, 16, result.outcome().name(), outcomeStyle);
-            cell(row, 17, result.reason(), styles.wrap);
-        }
-        finishTabularSheet(sheet, headers.length, rowIndex - 1,
-                new int[]{16, 16, 44, 24, 16, 16, 44, 55, 18, 24, 30, 18, 18, 18, 12, 20, 12, 55});
-    }
-
-    private static void writeChecks(XSSFWorkbook workbook, Styles styles,
-                                    List<CheckResult> results, ReportContext context,
-                                    ZonedDateTime generatedAt) {
-        Sheet sheet = workbook.createSheet("Check Details");
-        String[] headers = {"Generated At (UTC)", "Declared Sprint Day", "Jira ID", "Jira Key",
-                "Jira URL", "Summary", "Issue Type", "Assignee", "Assignee Account ID", "Status",
-                "Resolution", "Resolved", "Check Type", "Rule Key", "Check Name", "Jira Field / Source",
-                "Expected", "Actual", "Outcome", "Reason"};
-        header(sheet, headers, styles.header);
-
-        int rowIndex = 1;
-        for (CheckResult result : results) {
-            IssueDetails issue = result.issue();
-            String issueUrl = issueUrl(context.jiraBaseUrl(), issue.issueKey());
-            Row row = sheet.createRow(rowIndex++);
-            cell(row, 0, generatedAt.toString(), styles.normal);
-            numericCell(row, 1, context.runDay(), styles.normal);
-            cell(row, 2, issue.jiraId(), styles.normal);
-            hyperlinkCell(workbook, row, 3, issue.issueKey(), issueUrl, styles.hyperlink);
-            hyperlinkCell(workbook, row, 4, issueUrl, issueUrl, styles.hyperlink);
-            cell(row, 5, issue.summary(), styles.wrap);
-            cell(row, 6, issue.issueType(), styles.normal);
-            cell(row, 7, issue.assigneeName(), styles.normal);
-            cell(row, 8, issue.assigneeAccountId(), styles.normal);
-            cell(row, 9, issue.status(), styles.normal);
-            cell(row, 10, issue.resolution(), styles.normal);
-            cell(row, 11, Boolean.toString(issue.resolved()), styles.normal);
-            cell(row, 12, result.checkType(), styles.normal);
-            cell(row, 13, result.ruleKey(), styles.normal);
-            cell(row, 14, result.checkName(), styles.normal);
-            cell(row, 15, result.source(), styles.normal);
-            cell(row, 16, result.expected(), styles.wrap);
-            cell(row, 17, result.actual(), styles.wrap);
-            CellStyle outcomeStyle = switch (result.outcome()) {
-                case PASS -> styles.pass;
-                case FAIL -> styles.fail;
-                case SKIP -> styles.skip;
-            };
-            cell(row, 18, result.outcome().name(), outcomeStyle);
-            cell(row, 19, result.reason(), styles.wrap);
-        }
-        finishTabularSheet(sheet, headers.length, rowIndex - 1,
-                new int[]{28, 18, 16, 15, 44, 55, 18, 24, 30, 18, 18, 12, 14, 18, 22, 24, 28, 45, 12, 55});
-    }
-
-    private static void header(Sheet sheet, String[] values, CellStyle style) {
-        Row row = sheet.createRow(0);
-        row.setHeightInPoints(30);
-        for (int index = 0; index < values.length; index++) {
-            cell(row, index, values[index], style);
-        }
-    }
-
-    private static void finishTabularSheet(Sheet sheet, int columns, int lastRow, int[] widths) {
-        sheet.createFreezePane(0, 1);
-        if (lastRow >= 0) {
-            sheet.setAutoFilter(new CellRangeAddress(0, Math.max(lastRow, 0), 0, columns - 1));
-        }
-        for (int index = 0; index < widths.length; index++) {
-            sheet.setColumnWidth(index, Math.min(widths[index], 255) * 256);
+    private static void moveCompletedReport(Path temporary, Path report) throws IOException {
+        try {
+            Files.move(temporary, report, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(temporary, report);
         }
     }
 
@@ -331,27 +176,14 @@ public class ExcelReportWriter {
     }
 
     private static final class Styles {
-        private final CellStyle title;
         private final CellStyle header;
-        private final CellStyle label;
         private final CellStyle normal;
         private final CellStyle wrap;
         private final CellStyle pass;
         private final CellStyle fail;
-        private final CellStyle skip;
         private final CellStyle hyperlink;
 
         private Styles(XSSFWorkbook workbook) {
-            Font titleFont = workbook.createFont();
-            titleFont.setBold(true);
-            titleFont.setFontHeightInPoints((short) 16);
-            titleFont.setColor(IndexedColors.WHITE.getIndex());
-            title = workbook.createCellStyle();
-            title.setFont(titleFont);
-            title.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
-            title.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            title.setVerticalAlignment(VerticalAlignment.CENTER);
-
             Font headerFont = workbook.createFont();
             headerFont.setBold(true);
             headerFont.setColor(IndexedColors.WHITE.getIndex());
@@ -361,45 +193,41 @@ public class ExcelReportWriter {
             header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             header.setAlignment(HorizontalAlignment.CENTER);
             header.setVerticalAlignment(VerticalAlignment.CENTER);
-            header.setWrapText(true);
-            borders(header);
-
-            Font boldFont = workbook.createFont();
-            boldFont.setBold(true);
-            label = workbook.createCellStyle();
-            label.setFont(boldFont);
-            label.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            label.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            border(header);
 
             normal = workbook.createCellStyle();
             normal.setVerticalAlignment(VerticalAlignment.TOP);
+            border(normal);
 
             wrap = workbook.createCellStyle();
             wrap.cloneStyleFrom(normal);
             wrap.setWrapText(true);
 
-            pass = outcomeStyle(workbook, IndexedColors.LIGHT_GREEN, boldFont);
-            fail = outcomeStyle(workbook, IndexedColors.ROSE, boldFont);
-            skip = outcomeStyle(workbook, IndexedColors.GREY_25_PERCENT, boldFont);
+            pass = outcomeStyle(workbook, IndexedColors.LIGHT_GREEN);
+            fail = outcomeStyle(workbook, IndexedColors.ROSE);
 
             Font linkFont = workbook.createFont();
-            linkFont.setColor(IndexedColors.BLUE.getIndex());
             linkFont.setUnderline(Font.U_SINGLE);
+            linkFont.setColor(IndexedColors.BLUE.getIndex());
             hyperlink = workbook.createCellStyle();
             hyperlink.cloneStyleFrom(normal);
             hyperlink.setFont(linkFont);
         }
 
-        private static CellStyle outcomeStyle(XSSFWorkbook workbook, IndexedColors color, Font font) {
+        private static CellStyle outcomeStyle(XSSFWorkbook workbook, IndexedColors color) {
             CellStyle style = workbook.createCellStyle();
-            style.setFont(font);
             style.setFillForegroundColor(color.getIndex());
             style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            style.setAlignment(HorizontalAlignment.CENTER);
             style.setVerticalAlignment(VerticalAlignment.TOP);
+            Font font = workbook.createFont();
+            font.setBold(true);
+            style.setFont(font);
+            border(style);
             return style;
         }
 
-        private static void borders(CellStyle style) {
+        private static void border(CellStyle style) {
             style.setBorderTop(BorderStyle.THIN);
             style.setBorderBottom(BorderStyle.THIN);
             style.setBorderLeft(BorderStyle.THIN);
