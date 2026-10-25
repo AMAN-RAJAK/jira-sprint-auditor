@@ -19,11 +19,18 @@ public record AuditProperties(
     public record Jira(String baseUrl, String personalAccessToken) { }
     public record Checkpoint(Map<String, FieldRule> fields) { }
     public record FieldRule(String label, String jiraField, String acceptedValues) {
+        public static final String NON_EMPTY_VALUE = "__NON_EMPTY__";
+
         public List<String> acceptedValueList() {
             if (acceptedValues == null) return List.of();
             return Arrays.stream(acceptedValues.split("\\$", -1))
                     .map(String::trim)
                     .toList();
+        }
+
+        public boolean requiresNonEmptyValue() {
+            return acceptedValueList().stream()
+                    .anyMatch(value -> NON_EMPTY_VALUE.equalsIgnoreCase(value));
         }
     }
     public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) { }

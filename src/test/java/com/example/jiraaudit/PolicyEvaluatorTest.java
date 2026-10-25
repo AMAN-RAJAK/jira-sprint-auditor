@@ -197,6 +197,50 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    void nonEmptyRuleAcceptsAnyRevisedSpValueAndRejectsEmptyValues() throws Exception {
+        AuditProperties base = TestAuditProperties.settings(3);
+        Map<String, AuditProperties.FieldRule> fields =
+                new LinkedHashMap<>(base.checkpoints().get(3).fields());
+        fields.put("revised-sp", new AuditProperties.FieldRule(
+                "Revised SP", "revisedSp", AuditProperties.FieldRule.NON_EMPTY_VALUE));
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        checkpoints.put(3, new AuditProperties.Checkpoint(fields));
+        AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
+                checkpoints, base.artifacts(), base.report());
+
+        var populated = issue("""
+                {"status":{"name":"In Progress"},"coding":"In Progress","download":"Started",
+                 "revisedSp":8,"attachment":[{"filename":"WBS_scope"}]}
+                """);
+        CheckResult populatedResult = result(
+                evaluator.evaluate(populated, custom, 3, List.of()), "revised-sp");
+        assertEquals(PASS, populatedResult.outcome());
+        assertEquals("Any non-empty value", populatedResult.expected());
+        assertEquals("8", populatedResult.actual());
+
+        for (String emptyValue : List.of("null", "\"\"", "\"   \"", "[]", "{}")) {
+            var empty = issue("""
+                    {"status":{"name":"In Progress"},"coding":"In Progress","download":"Started",
+                     "revisedSp":%s,"attachment":[{"filename":"WBS_scope"}]}
+                    """.formatted(emptyValue));
+            CheckResult emptyResult = result(
+                    evaluator.evaluate(empty, custom, 3, List.of()), "revised-sp");
+            assertEquals(FAIL, emptyResult.outcome(), "Expected empty value to fail: " + emptyValue);
+            assertTrue(emptyResult.reason().contains("must not be empty"));
+        }
+
+        var missing = issue("""
+                {"status":{"name":"In Progress"},"coding":"In Progress","download":"Started",
+                 "attachment":[{"filename":"WBS_scope"}]}
+                """);
+        CheckResult missingResult = result(
+                evaluator.evaluate(missing, custom, 3, List.of()), "revised-sp");
+        assertEquals(FAIL, missingResult.outcome());
+        assertEquals("<not returned>", missingResult.actual());
+    }
+
+    @Test
     void missingConfiguredFieldFailsAndUnassignedUserIsReported() throws Exception {
         var issue = issue("""
                 {"assignee":null,"status":{"name":"In Progress"},

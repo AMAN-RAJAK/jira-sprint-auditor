@@ -77,6 +77,8 @@ class AuditPropertiesBindingTest {
             assertEquals("test-pat", properties.jira().personalAccessToken());
             assertEquals(List.of("Started", "In Progress", "Done - On Time", "Not Applicable"),
                     properties.checkpoints().get(3).fields().get("download").acceptedValueList());
+            assertTrue(properties.checkpoints().get(3).fields().get("revised-sp")
+                    .requiresNonEmptyValue());
             assertEquals("WBS_", properties.artifacts().day3WbsPrefix());
             assertEquals("CWC Not Applicable",
                     properties.artifacts().day10().cwc().commentContains());

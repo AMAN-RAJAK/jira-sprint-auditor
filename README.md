@@ -129,6 +129,21 @@ accepted Jira value. Leading and trailing spaces around each separated value
 are ignored. Empty values such as `Done$$Not Applicable` are rejected during
 startup validation.
 
+When a field does not require a specific value but must contain something, use
+the reserved `__NON_EMPTY__` rule by itself. For example:
+
+```yaml
+revised-sp:
+  label: Revised SP
+  jira-field: customfield_10105
+  accepted-values: '__NON_EMPTY__'
+```
+
+This rule passes for text, numbers, selections, and non-empty arrays or objects.
+It fails when the Jira field is missing, `null`, blank text, an empty array, or
+an empty object. `__NON_EMPTY__` cannot be combined with other accepted values,
+because it already accepts every meaningful value.
+
 The application requires exactly the Day `3` and Day `10` checkpoint sections.
 Only the selected day's Jira fields are requested and checked.
 

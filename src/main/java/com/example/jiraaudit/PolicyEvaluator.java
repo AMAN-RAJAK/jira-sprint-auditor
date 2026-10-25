@@ -26,20 +26,29 @@ public class PolicyEvaluator {
             AuditProperties.FieldRule rule = entry.getValue();
             String label = displayLabel(entry.getKey(), rule.label());
             List<String> acceptedValues = rule.acceptedValueList();
+            boolean nonEmptyRule = rule.requiresNonEmptyValue();
+            String expected = nonEmptyRule
+                    ? "Any non-empty value"
+                    : String.join(" | ", acceptedValues);
             JsonNode value = fields.get(rule.jiraField());
             if (value == null) {
                 results.add(new CheckResult(details, "FIELD", entry.getKey(), label, rule.jiraField(),
-                        String.join(" | ", acceptedValues), "<not returned>", FAIL,
+                        expected, "<not returned>", FAIL,
                         "Jira field was not returned: " + rule.jiraField()));
                 continue;
             }
             List<String> actual = flattenValues(value);
-            boolean matches = matchesAny(actual, acceptedValues);
+            boolean matches = nonEmptyRule
+                    ? hasMeaningfulValue(value)
+                    : matchesAny(actual, acceptedValues);
+            String reason = matches
+                    ? nonEmptyRule ? "Field contains a non-empty value" : "One configured value matched"
+                    : nonEmptyRule ? label + " must not be empty on Day " + policyDay
+                    : label + " does not match any configured Day " + policyDay + " value";
             results.add(new CheckResult(details, "FIELD", entry.getKey(), label, rule.jiraField(),
-                    String.join(" | ", acceptedValues), displayValues(actual),
+                    expected, displayValues(actual),
                     matches ? PASS : FAIL,
-                    matches ? "One configured value matched" : label +
-                            " does not match any configured Day " + policyDay + " value"));
+                    reason));
         }
 
         addArtifactChecks(results, details, fields, properties, policyDay,
@@ -223,6 +232,30 @@ public class PolicyEvaluator {
                 .anyMatch(expectedValue -> equalsIgnoreCase(actualValue, expectedValue)));
     }
 
+    private static boolean hasMeaningfulValue(JsonNode node) {
+        if (node == null || node.isNull()) return false;
+        if (node.isTextual()) return !node.asText().isBlank();
+        if (node.isArray()) {
+            for (JsonNode element : node) {
+                if (hasMeaningfulValue(element)) return true;
+            }
+            return false;
+        }
+        if (node.isObject()) {
+            if (node.isEmpty()) return false;
+            for (String field : List.of("value", "name", "displayName", "id")) {
+                JsonNode child = node.get(field);
+                if (child != null && !child.isNull()) return hasMeaningfulValue(child);
+            }
+            var values = node.elements();
+            while (values.hasNext()) {
+                if (hasMeaningfulValue(values.next())) return true;
+            }
+            return false;
+        }
+        return !node.asText("").isBlank();
+    }
+
     private static String commentText(JsonNode body) {
         if (body == null || body.isNull()) return "";
         if (body.isTextual()) return body.asText();
@@ -316,7 +349,9 @@ public class PolicyEvaluator {
     }
 
     private static String displayValues(List<String> values) {
-        return values.isEmpty() ? "<empty>" : String.join(" | ", values);
+        return values.isEmpty() ? "<empty>" : String.join(" | ", values.stream()
+                .map(value -> value == null || value.isBlank() ? "<blank>" : value)
+                .toList());
     }
 
     private static String normalize(String value) {

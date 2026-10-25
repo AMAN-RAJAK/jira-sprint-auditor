@@ -86,6 +86,24 @@ class AuditConfigurationValidatorTest {
     }
 
     @Test
+    void nonEmptyMarkerMustBeTheOnlyAcceptedValue() {
+        AuditProperties base = TestAuditProperties.settings(3);
+        Map<String, AuditProperties.FieldRule> fields =
+                new LinkedHashMap<>(base.checkpoints().get(3).fields());
+        fields.put("revised-sp", new AuditProperties.FieldRule(
+                "Revised SP", "revisedSp", "__NON_EMPTY__$Done"));
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        checkpoints.put(3, new AuditProperties.Checkpoint(fields));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 3, checkpoints, base.artifacts())));
+
+        assertTrue(error.getMessage().contains("__NON_EMPTY__ must be the only accepted value"));
+    }
+
+    @Test
     void artifactFieldRulesMustReferenceDayTenFields() {
         AuditProperties base = TestAuditProperties.settings(10);
         AuditProperties.Day10Artifacts dayTen = base.artifacts().day10();

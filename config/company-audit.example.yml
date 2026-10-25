@@ -27,6 +27,11 @@ audit:
           label: Coding Status
           jira-field: customfield_10101
           accepted-values: 'In Progress$Done - On Time$Not Applicable'
+        revised-sp:
+          label: Revised SP
+          jira-field: customfield_10105
+          # The field may contain any value, but it must not be empty.
+          accepted-values: '__NON_EMPTY__'
 
     10:
       fields:
@@ -46,6 +51,10 @@ audit:
           label: Download
           jira-field: customfield_10103
           accepted-values: 'Done - On Time$Not Applicable'
+        revised-sp:
+          label: Revised SP
+          jira-field: customfield_10105
+          accepted-values: '__NON_EMPTY__'
 
   artifacts:
     # Day 3 has exactly one artifact rule: WBS must be attached.

@@ -69,6 +69,12 @@ public final class AuditConfigurationValidator {
                     throw new IllegalArgumentException("accepted-values contains an empty $-separated value " +
                             "for Day " + day + " / " + entry.getKey());
                 }
+                if (rule.requiresNonEmptyValue() && rule.acceptedValueList().size() != 1) {
+                    throw new IllegalArgumentException(
+                            AuditProperties.FieldRule.NON_EMPTY_VALUE +
+                                    " must be the only accepted value for Day " + day +
+                                    " / " + entry.getKey());
+                }
             }
         });
     }
