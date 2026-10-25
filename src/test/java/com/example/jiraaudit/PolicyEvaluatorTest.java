@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.example.jiraaudit.CheckResult.Outcome.FAIL;
 import static com.example.jiraaudit.CheckResult.Outcome.PASS;
@@ -167,6 +169,31 @@ class PolicyEvaluatorTest {
         assertEquals(FAIL, coding.outcome());
         assertEquals("In Progress | Done - On Time | Not Applicable", coding.expected());
         assertEquals("Blocked", coding.actual());
+    }
+
+    @Test
+    void dollarSeparatorPreservesCommasInsideAcceptedValues() throws Exception {
+        AuditProperties base = TestAuditProperties.settings(3);
+        Map<String, AuditProperties.FieldRule> fields =
+                new LinkedHashMap<>(base.checkpoints().get(3).fields());
+        fields.put("download", new AuditProperties.FieldRule("Download", "download",
+                "Not Applicable (POC, Backporting, NoCodeChange)$Suite Pass (90%)"));
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        checkpoints.put(3, new AuditProperties.Checkpoint(fields));
+        AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
+                checkpoints, base.artifacts(), base.report());
+        var issue = issue("""
+                {"status":{"name":"In Progress"},"coding":"In Progress",
+                 "download":"Not Applicable (POC, Backporting, NoCodeChange)",
+                 "attachment":[{"filename":"WBS_scope"}]}
+                """);
+
+        CheckResult result = result(evaluator.evaluate(issue, custom, 3, List.of()), "download");
+
+        assertEquals(PASS, result.outcome());
+        assertEquals("Not Applicable (POC, Backporting, NoCodeChange) | Suite Pass (90%)",
+                result.expected());
     }
 
     @Test

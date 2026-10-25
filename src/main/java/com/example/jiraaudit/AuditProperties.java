@@ -2,6 +2,7 @@ package com.example.jiraaudit;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -17,7 +18,14 @@ public record AuditProperties(
 ) {
     public record Jira(String baseUrl, String personalAccessToken) { }
     public record Checkpoint(Map<String, FieldRule> fields) { }
-    public record FieldRule(String label, String jiraField, List<String> acceptedValues) { }
+    public record FieldRule(String label, String jiraField, String acceptedValues) {
+        public List<String> acceptedValueList() {
+            if (acceptedValues == null) return List.of();
+            return Arrays.stream(acceptedValues.split("\\$", -1))
+                    .map(String::trim)
+                    .toList();
+        }
+    }
     public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) { }
     public record Day10Artifacts(String wbsPrefix, ArtifactRule cwc, ArtifactRule ut,
                                  ArtifactRule atdd, ArtifactRule st) { }

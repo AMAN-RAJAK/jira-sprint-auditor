@@ -25,17 +25,18 @@ public class PolicyEvaluator {
         for (Map.Entry<String, AuditProperties.FieldRule> entry : checkpoint.fields().entrySet()) {
             AuditProperties.FieldRule rule = entry.getValue();
             String label = displayLabel(entry.getKey(), rule.label());
+            List<String> acceptedValues = rule.acceptedValueList();
             JsonNode value = fields.get(rule.jiraField());
             if (value == null) {
                 results.add(new CheckResult(details, "FIELD", entry.getKey(), label, rule.jiraField(),
-                        String.join(" | ", rule.acceptedValues()), "<not returned>", FAIL,
+                        String.join(" | ", acceptedValues), "<not returned>", FAIL,
                         "Jira field was not returned: " + rule.jiraField()));
                 continue;
             }
             List<String> actual = flattenValues(value);
-            boolean matches = matchesAny(actual, rule.acceptedValues());
+            boolean matches = matchesAny(actual, acceptedValues);
             results.add(new CheckResult(details, "FIELD", entry.getKey(), label, rule.jiraField(),
-                    String.join(" | ", rule.acceptedValues()), displayValues(actual),
+                    String.join(" | ", acceptedValues), displayValues(actual),
                     matches ? PASS : FAIL,
                     matches ? "One configured value matched" : label +
                             " does not match any configured Day " + policyDay + " value"));

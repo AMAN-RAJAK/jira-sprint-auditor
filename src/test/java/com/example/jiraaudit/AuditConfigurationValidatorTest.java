@@ -64,18 +64,25 @@ class AuditConfigurationValidatorTest {
                 new LinkedHashMap<>(base.checkpoints().get(10).fields());
         dayTen.put("coding-status", new AuditProperties.FieldRule(
                 "Coding Status", "coding",
-                List.of("Done - On Time", "Not Done", "Not Applicable")));
+                "Done - On Time$Not Done$Not Applicable"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints = new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(10, new AuditProperties.Checkpoint(dayTen));
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
                 copy(base, base.jira(), 10, checkpoints, base.artifacts())));
 
         dayTen.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding", List.of()));
+                "Coding Status", "coding", ""));
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, checkpoints, base.artifacts())));
         assertTrue(error.getMessage().contains("accepted-values"));
+
+        dayTen.put("coding-status", new AuditProperties.FieldRule(
+                "Coding Status", "coding", "Done - On Time$$Not Applicable"));
+        error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(error.getMessage().contains("empty $-separated value"));
     }
 
     @Test

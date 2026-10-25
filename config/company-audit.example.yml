@@ -13,36 +13,39 @@ audit:
 
   # Each checkpoint independently declares the fields checked on that day.
   # A field passes when its Jira value matches ANY accepted value.
+  # accepted-values is one quoted string. Separate values with $, not commas.
+  # Commas inside a Jira value are preserved, for example:
+  # 'Not Applicable (POC, Backporting, NoCodeChange)$Suite Pass (90%)'
   checkpoints:
     3:
       fields:
         download:
           label: Download
           jira-field: customfield_10103
-          accepted-values: [Started, In Progress, Done - On Time, Not Applicable]
+          accepted-values: 'Started$In Progress$Done - On Time$Not Applicable'
         coding-status:
           label: Coding Status
           jira-field: customfield_10101
-          accepted-values: [In Progress, Done - On Time, Not Applicable]
+          accepted-values: 'In Progress$Done - On Time$Not Applicable'
 
     10:
       fields:
         coding-status:
           label: Coding Status
           jira-field: customfield_10101
-          accepted-values: [Done - On Time, Not Applicable]
+          accepted-values: 'Done - On Time$Not Applicable'
         st-status:
           label: ST Status
           jira-field: customfield_10102
-          accepted-values: [Done - On Time, Not Applicable]
+          accepted-values: 'Done - On Time$Not Applicable'
         atdd-status:
           label: ATDD Status
           jira-field: customfield_10104
-          accepted-values: [Done - On Time, Not Applicable]
+          accepted-values: 'Done - On Time$Not Applicable'
         download:
           label: Download
           jira-field: customfield_10103
-          accepted-values: [Done - On Time, Not Applicable]
+          accepted-values: 'Done - On Time$Not Applicable'
 
   artifacts:
     # Day 3 has exactly one artifact rule: WBS must be attached.

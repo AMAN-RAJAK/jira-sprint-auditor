@@ -110,11 +110,24 @@ Configure these company-specific values in `company-audit.yml`:
 - report output and failure behavior.
 
 Day 3 and Day 10 field lists are independent. A field may be configured on one
-checkpoint and omitted from the other. Multiple accepted values use OR logic:
+checkpoint and omitted from the other. Configure `accepted-values` as one
+quoted string and separate possible values with `$`. The values use OR logic:
 
 ```yaml
-accepted-values: [Done - On Time, Not Done, Not Applicable]
+accepted-values: 'Done - On Time$Not Done$Not Applicable'
 ```
+
+Do not use commas as accepted-value separators. Commas inside a Jira value are
+preserved, so this configuration defines exactly two possible values:
+
+```yaml
+accepted-values: 'Not Applicable (POC, Backporting, NoCodeChange)$Suite Pass (90%)'
+```
+
+The `$` character is reserved as the separator and cannot be part of an
+accepted Jira value. Leading and trailing spaces around each separated value
+are ignored. Empty values such as `Done$$Not Applicable` are rejected during
+startup validation.
 
 The application requires exactly the Day `3` and Day `10` checkpoint sections.
 Only the selected day's Jira fields are requested and checked.

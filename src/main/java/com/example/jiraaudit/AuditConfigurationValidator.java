@@ -61,12 +61,14 @@ public final class AuditConfigurationValidator {
                     throw new IllegalArgumentException("Duplicate jira-field on Day " + day + ": " +
                             rule.jiraField());
                 }
-                if (rule.acceptedValues() == null || rule.acceptedValues().isEmpty()) {
+                if (rule.acceptedValues() == null || rule.acceptedValues().isBlank()) {
                     throw new IllegalArgumentException("accepted-values must not be empty for Day " + day +
                             " / " + entry.getKey());
                 }
-                rule.acceptedValues().forEach(value -> required(value,
-                        "accepted value for Day " + day + " / " + entry.getKey()));
+                if (rule.acceptedValueList().stream().anyMatch(String::isBlank)) {
+                    throw new IllegalArgumentException("accepted-values contains an empty $-separated value " +
+                            "for Day " + day + " / " + entry.getKey());
+                }
             }
         });
     }
