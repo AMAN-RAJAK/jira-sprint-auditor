@@ -36,7 +36,8 @@ public class PolicyEvaluator {
             if (value == null) {
                 results.add(new CheckResult(details, "FIELD", entry.getKey(), label, rule.jiraField(),
                         expected, "<not returned>", FAIL,
-                        "Jira field was not returned: " + rule.jiraField()));
+                        "Jira field was not returned: " + rule.jiraField(),
+                        rule.responsibleTeam()));
                 continue;
             }
             List<String> actual = flattenValues(value);
@@ -50,7 +51,7 @@ public class PolicyEvaluator {
             results.add(new CheckResult(details, "FIELD", entry.getKey(), label, rule.jiraField(),
                     expected, displayValues(actual),
                     matches ? PASS : FAIL,
-                    reason));
+                    reason, rule.responsibleTeam()));
         }
 
         addArtifactChecks(results, details, fields, properties, policyDay,

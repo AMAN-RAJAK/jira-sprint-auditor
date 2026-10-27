@@ -30,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -76,7 +77,7 @@ public class ExcelReportWriter {
         Styles styles = new Styles(workbook);
         Sheet sheet = workbook.createSheet("Audit Results");
         String[] headers = {"Run Day", "Jira ID", "Jira Key", "Summary", "Assignee",
-                "Jira Status", "Audit Result", "Remarks"};
+                "Jira Status", "Audit Result", "Responsible Team", "Remarks"};
         Row header = sheet.createRow(0);
         header.setHeightInPoints(28);
         for (int index = 0; index < headers.length; index++) {
@@ -89,6 +90,7 @@ public class ExcelReportWriter {
             List<CheckResult> failures = issueChecks.stream()
                     .filter(check -> check.outcome() == CheckResult.Outcome.FAIL).toList();
             boolean passed = failures.isEmpty();
+            String responsibleTeams = responsibleTeams(failures);
             String remarks = passed ? passRemarks(issueChecks) : failureRemarks(failures);
             String issueUrl = issueUrl(context.jiraBaseUrl(), issue.issueKey());
 
@@ -100,12 +102,13 @@ public class ExcelReportWriter {
             cell(row, 4, issue.assigneeName(), styles.normal);
             cell(row, 5, issue.status(), styles.normal);
             cell(row, 6, passed ? "PASS" : "FAIL", passed ? styles.pass : styles.fail);
-            cell(row, 7, remarks, styles.wrap);
+            cell(row, 7, responsibleTeams, styles.wrap);
+            cell(row, 8, remarks, styles.wrap);
         }
 
         sheet.createFreezePane(0, 1);
         sheet.setAutoFilter(new CellRangeAddress(0, Math.max(0, rowIndex - 1), 0, headers.length - 1));
-        int[] widths = {12, 16, 16, 60, 26, 20, 16, 100};
+        int[] widths = {12, 16, 16, 60, 26, 20, 16, 45, 100};
         for (int index = 0; index < widths.length; index++) {
             sheet.setColumnWidth(index, widths[index] * 256);
         }
@@ -123,6 +126,28 @@ public class ExcelReportWriter {
         return failures.stream().map(check -> check.checkName() + ": " + check.reason() +
                 " [expected=" + check.expected() + "; actual=" + check.actual() + "]")
                 .collect(Collectors.joining("; "));
+    }
+
+    private static String responsibleTeams(List<CheckResult> failures) {
+        Map<String, List<String>> fieldsByTeam = new LinkedHashMap<>();
+        Map<String, String> teamLabels = new LinkedHashMap<>();
+        failures.stream()
+                .filter(check -> "FIELD".equals(check.checkType()))
+                .forEach(check -> {
+                    String configuredTeam = check.responsibleTeam();
+                    String team = configuredTeam == null || configuredTeam.isBlank()
+                            ? "Unassigned" : configuredTeam.trim();
+                    String teamKey = team.toLowerCase(Locale.ROOT);
+                    teamLabels.putIfAbsent(teamKey, team);
+                    fieldsByTeam.computeIfAbsent(teamKey, ignored -> new ArrayList<>())
+                            .add(check.checkName());
+                });
+        if (fieldsByTeam.isEmpty()) return "N/A";
+        return fieldsByTeam.entrySet().stream()
+                .map(entry -> teamLabels.get(entry.getKey()) + ": " + entry.getValue().stream()
+                        .distinct()
+                        .collect(Collectors.joining(", ")))
+                .collect(Collectors.joining(" | "));
     }
 
     private static String passRemarks(List<CheckResult> checks) {

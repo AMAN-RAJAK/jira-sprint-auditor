@@ -57,6 +57,8 @@ public final class AuditConfigurationValidator {
                     throw new IllegalArgumentException("Empty field rule for Day " + day + ": " + entry.getKey());
                 }
                 required(rule.jiraField(), "jira-field for Day " + day + " / " + entry.getKey());
+                required(rule.responsibleTeam(),
+                        "responsible-team for Day " + day + " / " + entry.getKey());
                 if (!jiraFields.add(normalize(rule.jiraField()))) {
                     throw new IllegalArgumentException("Duplicate jira-field on Day " + day + ": " +
                             rule.jiraField());

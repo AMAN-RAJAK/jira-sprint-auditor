@@ -259,6 +259,7 @@ class PolicyEvaluatorTest {
         assertEquals(FAIL, coding.outcome());
         assertEquals("In Progress | Done - On Time | Not Applicable", coding.expected());
         assertEquals("Blocked", coding.actual());
+        assertEquals("DEV", coding.responsibleTeam());
     }
 
     @Test
@@ -266,7 +267,7 @@ class PolicyEvaluatorTest {
         AuditProperties base = TestAuditProperties.settings(3);
         Map<String, AuditProperties.FieldRule> fields =
                 new LinkedHashMap<>(base.checkpoints().get(3).fields());
-        fields.put("download", new AuditProperties.FieldRule("Download", "download",
+        fields.put("download", new AuditProperties.FieldRule("Download", "download", "DEV",
                 "Not Applicable (POC, Backporting, NoCodeChange)$Suite Pass (90%)"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
@@ -293,7 +294,8 @@ class PolicyEvaluatorTest {
         Map<String, AuditProperties.FieldRule> fields =
                 new LinkedHashMap<>(base.checkpoints().get(3).fields());
         fields.put("revised-sp", new AuditProperties.FieldRule(
-                "Revised SP", "revisedSp", AuditProperties.FieldRule.NON_EMPTY_VALUE));
+                "Revised SP", "revisedSp", "PMG",
+                AuditProperties.FieldRule.NON_EMPTY_VALUE));
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
@@ -344,6 +346,7 @@ class PolicyEvaluatorTest {
         CheckResult coding = result(results, "coding-status");
         assertEquals(FAIL, coding.outcome());
         assertEquals("<not returned>", coding.actual());
+        assertEquals("DEV", coding.responsibleTeam());
         assertEquals("Unassigned", coding.issue().assigneeName());
     }
 

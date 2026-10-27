@@ -18,7 +18,8 @@ public record AuditProperties(
 ) {
     public record Jira(String baseUrl, String personalAccessToken) { }
     public record Checkpoint(Map<String, FieldRule> fields, LinkedBugRule linkedBugs) { }
-    public record FieldRule(String label, String jiraField, String acceptedValues) {
+    public record FieldRule(String label, String jiraField, String responsibleTeam,
+                            String acceptedValues) {
         public static final String NON_EMPTY_VALUE = "__NON_EMPTY__";
 
         public List<String> acceptedValueList() {

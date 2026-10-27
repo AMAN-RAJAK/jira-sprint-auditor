@@ -22,14 +22,17 @@ audit:
         download:
           label: Download
           jira-field: customfield_10103
+          responsible-team: DEV
           accepted-values: 'Started$In Progress$Done - On Time$Not Applicable'
         coding-status:
           label: Coding Status
           jira-field: customfield_10101
+          responsible-team: DEV
           accepted-values: 'In Progress$Done - On Time$Not Applicable'
         revised-sp:
           label: Revised SP
           jira-field: customfield_10105
+          responsible-team: PMG
           # The field may contain any value, but it must not be empty.
           accepted-values: '__NON_EMPTY__'
 
@@ -38,22 +41,27 @@ audit:
         coding-status:
           label: Coding Status
           jira-field: customfield_10101
+          responsible-team: DEV
           accepted-values: 'Done - On Time$Not Applicable'
         st-status:
           label: ST Status
           jira-field: customfield_10102
+          responsible-team: PQM
           accepted-values: 'Done - On Time$Not Applicable'
         atdd-status:
           label: ATDD Status
           jira-field: customfield_10104
+          responsible-team: PQM
           accepted-values: 'Done - On Time$Not Applicable'
         download:
           label: Download
           jira-field: customfield_10103
+          responsible-team: DEV
           accepted-values: 'Done - On Time$Not Applicable'
         revised-sp:
           label: Revised SP
           jira-field: customfield_10105
+          responsible-team: PMG
           accepted-values: '__NON_EMPTY__'
 
       # Every directly linked issue of this type must have one of these statuses.

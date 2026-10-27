@@ -11,7 +11,8 @@ The application is read-only. It does not update Jira.
 For each ticket returned by the configured JQL, the application:
 
 1. records the Jira ID, key, summary, assignee, and workflow status;
-2. checks the fields configured for the selected checkpoint;
+2. checks the fields configured for the selected checkpoint and records the
+   configured team responsible for each failed field;
 3. checks the checkpoint's required attachment filename rules;
 4. reads newest-first Jira comments only when a missing Day-10 artifact needs
    comment evidence; and
@@ -95,6 +96,7 @@ The `Audit Results` sheet contains one row per JQL ticket:
 | Assignee | Jira display name or `Unassigned` |
 | Jira Status | Jira workflow status |
 | Audit Result | `PASS` or `FAIL` |
+| Responsible Team | Teams and field labels for failed field checks, such as `DEV: Coding Status, Download \| PQM: ATDD Status`; `N/A` when no field check failed |
 | Remarks | Failure reasons with expected/actual values, or accepted Not Applicable evidence |
 
 ## Required configuration
@@ -108,8 +110,8 @@ cp config/company-audit.example.yml company-audit.yml
 Configure these company-specific values in `company-audit.yml`:
 
 - `audit.jql`: the complete story scope for the audit;
-- `audit.checkpoints.3.fields`: Day-3 Jira field IDs and possible values;
-- `audit.checkpoints.10.fields`: Day-10 Jira field IDs and possible values;
+- `audit.checkpoints.3.fields`: Day-3 Jira field IDs, responsible teams, and possible values;
+- `audit.checkpoints.10.fields`: Day-10 Jira field IDs, responsible teams, and possible values;
 - `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename marker or alternative markers;
 - Day-10 WBS markers and CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
@@ -119,8 +121,27 @@ Configure these company-specific values in `company-audit.yml`:
 - report output and failure behavior.
 
 Day 3 and Day 10 field lists are independent. A field may be configured on one
-checkpoint and omitted from the other. Configure `accepted-values` as one
-quoted string and separate possible values with `$`. The values use OR logic:
+checkpoint and omitted from the other. Every field rule requires a non-empty
+`responsible-team`. This is reporting metadata only: it does not change field
+matching or the ticket's PASS/FAIL result. Only failed field checks appear in
+the Responsible Team column; artifact and linked-Bug failures do not assign a
+field owner.
+
+```yaml
+download:
+  label: Download
+  jira-field: customfield_10103
+  responsible-team: DEV
+  accepted-values: 'Done - On Time$Not Applicable'
+```
+
+When several fields fail, the report groups their labels by team, for example
+`DEV: Coding Status, Download | PMG: Revised SP`. Team names are free-form text,
+so values such as `DEV`, `PMG`, or `PQM` can follow company terminology. The
+setting name must be spelled `responsible-team`.
+
+Configure `accepted-values` as one quoted string and separate possible values
+with `$`. The values use OR logic:
 
 ```yaml
 accepted-values: 'Done - On Time$Not Done$Not Applicable'
@@ -183,6 +204,7 @@ the reserved `__NON_EMPTY__` rule by itself. For example:
 revised-sp:
   label: Revised SP
   jira-field: customfield_10105
+  responsible-team: PMG
   accepted-values: '__NON_EMPTY__'
 ```
 

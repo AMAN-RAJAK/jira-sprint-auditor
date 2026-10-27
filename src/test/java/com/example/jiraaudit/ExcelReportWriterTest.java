@@ -27,22 +27,38 @@ class ExcelReportWriterTest {
                 "Asha Rao", "In Progress");
         IssueDetails passedIssue = new IssueDetails("10003", "PAY-103", "No code change",
                 "Dev One", "Done");
+        IssueDetails artifactFailureIssue = new IssueDetails("10004", "PAY-104", "Missing WBS",
+                "Dev Two", "In Progress");
         List<CheckResult> checks = List.of(
                 new CheckResult(failedIssue, "FIELD", "coding-status", "Coding Status",
                         "customfield_10101", "Done - On Time | Not Applicable", "In Progress",
                         CheckResult.Outcome.FAIL,
-                        "Coding Status does not match any configured Day 10 value"),
+                        "Coding Status does not match any configured Day 10 value", "DEV"),
+                new CheckResult(failedIssue, "FIELD", "download", "Download",
+                        "customfield_10103", "Done - On Time", "Started",
+                        CheckResult.Outcome.FAIL,
+                        "Download does not match any configured Day 10 value", " dev "),
+                new CheckResult(failedIssue, "FIELD", "revised-sp", "Revised SP",
+                        "customfield_10105", "Any non-empty value", "<empty>",
+                        CheckResult.Outcome.FAIL,
+                        "Revised SP must not be empty on Day 10", "PMG"),
                 new CheckResult(failedIssue, "ARTIFACT", "WBS_", "WBS_", "attachment",
                         "Attached filename starts with WBS_", "WBS_scope.xlsx", CheckResult.Outcome.PASS,
                         "Required artifact is attached"),
                 new CheckResult(passedIssue, "FIELD", "coding-status", "Coding Status",
                         "customfield_10101", "Done - On Time | Not Applicable", "Not Applicable",
-                        CheckResult.Outcome.PASS, "One configured value matched"),
+                        CheckResult.Outcome.PASS, "One configured value matched", "DEV"),
                 new CheckResult(passedIssue, "ARTIFACT", "CWC_", "CWC_",
                         "attachment + comments + coding-status",
                         "Attachment CWC_ or comment", "attachment=<missing>; comment=9",
                         CheckResult.Outcome.PASS,
-                        "Missing artifact accepted by configured Not Applicable evidence")
+                        "Missing artifact accepted by configured Not Applicable evidence"),
+                new CheckResult(artifactFailureIssue, "FIELD", "coding-status", "Coding Status",
+                        "customfield_10101", "In Progress", "In Progress",
+                        CheckResult.Outcome.PASS, "One configured value matched", "DEV"),
+                new CheckResult(artifactFailureIssue, "ARTIFACT", "WBS", "WBS", "attachment",
+                        "Attached filename contains WBS", "<missing>", CheckResult.Outcome.FAIL,
+                        "Required WBS artifact is not attached")
         );
         Clock clock = Clock.fixed(Instant.parse("2026-10-25T23:30:00Z"),
                 ZoneId.of("Asia/Kolkata"));
@@ -58,13 +74,14 @@ class ExcelReportWriterTest {
             assertEquals(1, workbook.getNumberOfSheets());
             var sheet = workbook.getSheet("Audit Results");
             assertNotNull(sheet);
-            assertEquals(8, sheet.getRow(0).getLastCellNum());
+            assertEquals(9, sheet.getRow(0).getLastCellNum());
             assertEquals("Run Day", sheet.getRow(0).getCell(0).getStringCellValue());
             assertEquals("Jira ID", sheet.getRow(0).getCell(1).getStringCellValue());
             assertEquals("Assignee", sheet.getRow(0).getCell(4).getStringCellValue());
             assertEquals("Jira Status", sheet.getRow(0).getCell(5).getStringCellValue());
             assertEquals("Audit Result", sheet.getRow(0).getCell(6).getStringCellValue());
-            assertEquals("Remarks", sheet.getRow(0).getCell(7).getStringCellValue());
+            assertEquals("Responsible Team", sheet.getRow(0).getCell(7).getStringCellValue());
+            assertEquals("Remarks", sheet.getRow(0).getCell(8).getStringCellValue());
 
             var failedRow = sheet.getRow(1);
             assertEquals(10, failedRow.getCell(0).getNumericCellValue());
@@ -76,11 +93,19 @@ class ExcelReportWriterTest {
             assertEquals("Asha Rao", failedRow.getCell(4).getStringCellValue());
             assertEquals("In Progress", failedRow.getCell(5).getStringCellValue());
             assertEquals("FAIL", failedRow.getCell(6).getStringCellValue());
-            assertTrue(failedRow.getCell(7).getStringCellValue().contains("Coding Status"));
+            assertEquals("DEV: Coding Status, Download | PMG: Revised SP",
+                    failedRow.getCell(7).getStringCellValue());
+            assertTrue(failedRow.getCell(8).getStringCellValue().contains("Coding Status"));
 
             var passedRow = sheet.getRow(2);
             assertEquals("PASS", passedRow.getCell(6).getStringCellValue());
-            assertTrue(passedRow.getCell(7).getStringCellValue().contains("Not Applicable evidence"));
+            assertEquals("N/A", passedRow.getCell(7).getStringCellValue());
+            assertTrue(passedRow.getCell(8).getStringCellValue().contains("Not Applicable evidence"));
+
+            var artifactFailureRow = sheet.getRow(3);
+            assertEquals("FAIL", artifactFailureRow.getCell(6).getStringCellValue());
+            assertEquals("N/A", artifactFailureRow.getCell(7).getStringCellValue());
+            assertTrue(artifactFailureRow.getCell(8).getStringCellValue().contains("WBS"));
         }
     }
 }

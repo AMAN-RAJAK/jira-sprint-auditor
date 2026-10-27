@@ -77,6 +77,10 @@ class AuditPropertiesBindingTest {
             assertEquals("test-pat", properties.jira().personalAccessToken());
             assertEquals(List.of("Started", "In Progress", "Done - On Time", "Not Applicable"),
                     properties.checkpoints().get(3).fields().get("download").acceptedValueList());
+            assertEquals("DEV",
+                    properties.checkpoints().get(3).fields().get("download").responsibleTeam());
+            assertEquals("PMG",
+                    properties.checkpoints().get(10).fields().get("revised-sp").responsibleTeam());
             assertTrue(properties.checkpoints().get(3).fields().get("revised-sp")
                     .requiresNonEmptyValue());
             assertEquals(List.of("Resolved", "Closed", "Done"),

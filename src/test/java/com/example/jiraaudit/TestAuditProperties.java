@@ -20,18 +20,18 @@ final class TestAuditProperties {
     static Map<Integer, AuditProperties.Checkpoint> checkpoints() {
         Map<String, AuditProperties.FieldRule> dayThree = new LinkedHashMap<>();
         dayThree.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding",
+                "Coding Status", "coding", "DEV",
                 "In Progress$Done - On Time$Not Applicable"));
         dayThree.put("download", new AuditProperties.FieldRule(
-                "Download", "download", "Started$In Progress$Done - On Time"));
+                "Download", "download", "DEV", "Started$In Progress$Done - On Time"));
 
         Map<String, AuditProperties.FieldRule> dayTen = new LinkedHashMap<>();
         dayTen.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding", "Done - On Time$Not Applicable"));
+                "Coding Status", "coding", "DEV", "Done - On Time$Not Applicable"));
         dayTen.put("st-status", new AuditProperties.FieldRule(
-                "ST Status", "st", "Done - On Time$Not Applicable"));
+                "ST Status", "st", "PQM", "Done - On Time$Not Applicable"));
         dayTen.put("atdd-status", new AuditProperties.FieldRule(
-                "ATDD Status", "atdd", "Done - On Time$Not Applicable"));
+                "ATDD Status", "atdd", "PQM", "Done - On Time$Not Applicable"));
 
         return Map.of(
                 3, new AuditProperties.Checkpoint(dayThree, null),

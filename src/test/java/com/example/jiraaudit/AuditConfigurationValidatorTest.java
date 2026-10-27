@@ -86,7 +86,7 @@ class AuditConfigurationValidatorTest {
         Map<String, AuditProperties.FieldRule> dayTen =
                 new LinkedHashMap<>(base.checkpoints().get(10).fields());
         dayTen.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding",
+                "Coding Status", "coding", "DEV",
                 "Done - On Time$Not Done$Not Applicable"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints = new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(10, new AuditProperties.Checkpoint(dayTen,
@@ -95,14 +95,21 @@ class AuditConfigurationValidatorTest {
                 copy(base, base.jira(), 10, checkpoints, base.artifacts())));
 
         dayTen.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding", ""));
+                "Coding Status", "coding", " ", "Done - On Time"));
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(error.getMessage().contains("responsible-team"));
+
+        dayTen.put("coding-status", new AuditProperties.FieldRule(
+                "Coding Status", "coding", "DEV", ""));
+        error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, checkpoints, base.artifacts())));
         assertTrue(error.getMessage().contains("accepted-values"));
 
         dayTen.put("coding-status", new AuditProperties.FieldRule(
-                "Coding Status", "coding", "Done - On Time$$Not Applicable"));
+                "Coding Status", "coding", "DEV", "Done - On Time$$Not Applicable"));
         error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, checkpoints, base.artifacts())));
@@ -115,7 +122,7 @@ class AuditConfigurationValidatorTest {
         Map<String, AuditProperties.FieldRule> fields =
                 new LinkedHashMap<>(base.checkpoints().get(3).fields());
         fields.put("revised-sp", new AuditProperties.FieldRule(
-                "Revised SP", "revisedSp", "__NON_EMPTY__$Done"));
+                "Revised SP", "revisedSp", "PMG", "__NON_EMPTY__$Done"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
