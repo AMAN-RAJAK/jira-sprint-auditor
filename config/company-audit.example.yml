@@ -80,14 +80,15 @@ audit:
         not-applicable-values: 'Not Applicable'
         comment-contains: CWC Not Applicable
 
-      # UT has no status field. Its absence always requires this comment.
+      # When ATDD Status is Not Applicable, UT must be attached or this comment
+      # must exist. When ATDD Status is applicable, UT is optional.
       ut:
         prefix: UT_
         comment-contains: UT Not Applicable
 
-      # If ATDD Status matches not-applicable-values, ATDD must be absent and
-      # UT must either be attached or have the UT Not Applicable comment.
-      # Otherwise ATDD is mandatory and cannot be waived by an ATDD comment.
+      # If ATDD Status matches not-applicable-values, ATDD is optional and the
+      # UT attachment/comment rule above applies. Otherwise ATDD is mandatory.
+      # UT and ATDD are allowed to be attached together in either case.
       atdd:
         prefix: ATDD_
         field-rule: atdd-status

@@ -57,7 +57,7 @@ class AuditRunnerTest {
     }
 
     @Test
-    void dayTenFetchesCommentsOnlyWhenMissingArtifactNeedsEvidence() throws Exception {
+    void dayTenDoesNotFetchCommentsWhenAtddIsApplicableAndUtIsAbsent() throws Exception {
         AuditProperties properties = properties(10, true);
         var fields = MAPPER.readTree("""
                 {"summary":"ATDD story","assignee":{"displayName":"Asha Rao"},
@@ -86,14 +86,14 @@ class AuditRunnerTest {
 
         runner.run(null);
 
-        assertEquals(1, commentCalls.get());
+        assertEquals(0, commentCalls.get());
         assertTrue(requested.get().contains("issuelinks"));
         assertEquals(0, runner.exitCode());
         try (InputStream input = Files.newInputStream(onlyWorkbook());
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {
             var row = workbook.getSheet("Audit Results").getRow(1);
             assertEquals("PASS", row.getCell(6).getStringCellValue());
-            assertTrue(row.getCell(7).getStringCellValue().contains("Not Applicable evidence"));
+            assertEquals("All applicable checks passed", row.getCell(7).getStringCellValue());
         }
     }
 

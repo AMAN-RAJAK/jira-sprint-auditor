@@ -143,7 +143,7 @@ public final class AuditConfigurationValidator {
         boolean utHasValues = ut.notApplicableValues() != null && !ut.notApplicableValues().isBlank();
         if (utHasField || utHasValues) {
             throw new IllegalArgumentException(
-                    "Day 10 UT uses the UT/ATDD alternative rule and must not configure a field-rule");
+                    "Day 10 UT is controlled by ATDD Status and must not configure a field-rule");
         }
     }
 

@@ -182,7 +182,7 @@ class AuditConfigurationValidatorTest {
     }
 
     @Test
-    void utUsesOnlyCommentAndUtAtddAlternativeRule() {
+    void utUsesAtddStatusAndDoesNotConfigureItsOwnFieldRule() {
         AuditProperties base = TestAuditProperties.settings(10);
         AuditProperties.Day10Artifacts dayTen = base.artifacts().day10();
         AuditProperties.Artifacts invalid = new AuditProperties.Artifacts("WBS_",
@@ -194,7 +194,7 @@ class AuditConfigurationValidatorTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, base.checkpoints(), invalid)));
-        assertTrue(error.getMessage().contains("UT/ATDD alternative"));
+        assertTrue(error.getMessage().contains("controlled by ATDD Status"));
     }
 
     @Test

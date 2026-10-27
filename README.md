@@ -42,7 +42,8 @@ sprint-calendar, or time-zone calculation.
 - CWC, ST, and ATDD are linked to configured Day-10 field rules, each with its
   own configurable Not Applicable values.
 - ATDD Status decides the ATDD/UT evidence path. An applicable ATDD Status
-  requires ATDD; a Not Applicable ATDD Status permits UT or a UT comment.
+  requires ATDD. A Not Applicable ATDD Status requires UT or a UT comment.
+- UT and ATDD may both be attached; neither artifact invalidates the other.
 - Every directly linked issue whose type matches the configured Bug issue type
   must have one of the configured resolved statuses.
 
@@ -53,20 +54,21 @@ The Day-10 artifact decisions are:
 | WBS | Must be attached |
 | CWC | If Coding Status is configured as Not Applicable, CWC must be absent; otherwise CWC attachment or the configured CWC comment is required |
 | ST | If ST Status is configured as Not Applicable, ST must be absent; otherwise ST attachment or the configured ST comment is required |
-| ATDD | If ATDD Status matches `not-applicable-values`, ATDD must be absent; otherwise ATDD must be attached and cannot be waived by a comment |
-| UT | Has no mapped status field; when absent it requires the configured `UT Not Applicable` comment |
+| ATDD | If ATDD Status is applicable, ATDD must be attached and cannot be waived by a comment; otherwise ATDD is optional |
+| UT | If ATDD Status is Not Applicable, UT must be attached or have the configured `UT Not Applicable` comment; otherwise UT is optional |
 | Linked Bugs | Every directly linked Bug must have a configured resolved status; unresolved or incomplete linked-issue data fails the parent ticket |
 
-The ATDD/UT combinations are:
+The ATDD/UT rules are:
 
-- ATDD Status Not Applicable: ATDD must be absent. UT may be attached, or both
-  ATDD and UT may be absent when a matching UT Not Applicable comment exists.
-- ATDD Status applicable: ATDD must be attached, UT must be absent, and a
-  matching UT Not Applicable comment is required.
+- ATDD Status Not Applicable: UT must be attached or a matching UT Not
+  Applicable comment must exist. ATDD may be attached or absent.
+- ATDD Status applicable: ATDD must be attached. UT may be attached or absent,
+  and no UT comment is required.
+- Both UT and ATDD attachments are permitted.
 
 ST remains an independent rule in both paths: attach it when applicable, or
-omit it when its mapped field is Not Applicable. If an applicable CWC, ST, or
-UT artifact is absent, its configured standard comment can provide the
+omit it when its mapped field is Not Applicable. If an applicable CWC or ST
+artifact is absent, its configured standard comment can provide the
 missing-artifact evidence. A comment can never replace a required WBS or ATDD
 attachment.
 
