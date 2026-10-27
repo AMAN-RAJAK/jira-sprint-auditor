@@ -46,14 +46,16 @@ public class ExcelReportWriter {
         this.clock = clock;
     }
 
-    public record ReportContext(int runDay, String jiraBaseUrl, String outputDirectory) { }
+    public record ReportContext(int runDay, String jiraBaseUrl, String outputDirectory,
+                                String gaVersion, String sprintPhase) { }
 
     public Path write(List<CheckResult> results, ReportContext context) throws IOException {
         Path directory = Path.of(context.outputDirectory());
         Files.createDirectories(directory);
         ZonedDateTime generatedAt = ZonedDateTime.now(clock.withZone(ZoneOffset.UTC));
-        Path report = directory.resolve("jira-audit-day" + context.runDay() + "-" +
-                generatedAt.format(FILE_STAMP) + "-" +
+        Path report = directory.resolve("AUDIT_" + filePart(context.gaVersion(), "GA") + "_" +
+                filePart(context.sprintPhase(), "SPRINT") + "_DAY" + context.runDay() + "_" +
+                generatedAt.format(FILE_STAMP) + "_" +
                 UUID.randomUUID().toString().substring(0, 8) + ".xlsx");
         Path temporary = Files.createTempFile(directory, ".jira-audit-", ".xlsx.tmp");
 
@@ -70,6 +72,16 @@ public class ExcelReportWriter {
         } finally {
             Files.deleteIfExists(temporary);
         }
+    }
+
+    private static String filePart(String value, String fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        String safe = value.trim()
+                .replaceAll("[^A-Za-z0-9._-]+", "-")
+                .replaceAll("-+", "-")
+                .replaceAll("^[._-]+|[._-]+$", "");
+        if (safe.isBlank()) return fallback;
+        return safe.length() <= 60 ? safe : safe.substring(0, 60);
     }
 
     private static void writeGrid(XSSFWorkbook workbook, List<CheckResult> results,

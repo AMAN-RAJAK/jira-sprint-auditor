@@ -14,7 +14,8 @@ final class TestAuditProperties {
         return new AuditProperties(
                 new AuditProperties.Jira("https://jira.company.example", "test-pat"),
                 "project = PAY AND sprint = 123", day, 100,
-                checkpoints(), artifacts(), report, null, null);
+                checkpoints(), artifacts(), report,
+                new AuditProperties.AuditContext("Payments", "9.5-GA", "Sprint-5"), null);
     }
 
     static Map<Integer, AuditProperties.Checkpoint> checkpoints() {
@@ -34,10 +35,10 @@ final class TestAuditProperties {
                 "ATDD Status", "atdd", "PQM", "Done - On Time$Not Applicable"));
 
         return Map.of(
-                3, new AuditProperties.Checkpoint(dayThree, null),
+                3, new AuditProperties.Checkpoint(dayThree, null, null),
                 10, new AuditProperties.Checkpoint(dayTen,
                         new AuditProperties.LinkedBugRule(
-                                "Bug", "Resolved$Closed$Done")));
+                                "Bug", "Resolved$Closed$Done"), null));
     }
 
     static AuditProperties.Artifacts artifacts() {

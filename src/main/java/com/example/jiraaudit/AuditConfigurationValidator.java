@@ -41,6 +41,12 @@ public final class AuditConfigurationValidator {
         validateArtifacts(cfg.artifacts(), cfg.checkpoints().get(10).fields());
         if (cfg.report() == null) throw new IllegalArgumentException("audit.report is required");
         required(cfg.report().directory(), "audit.report.directory");
+        if (cfg.context() == null) {
+            throw new IllegalArgumentException(
+                    "audit.context is required for GA version and sprint phase report naming");
+        }
+        required(cfg.context().gaVersion(), "audit.context.ga-version");
+        required(cfg.context().sprintPhase(), "audit.context.sprint-phase");
         validateMail(cfg);
     }
 
@@ -48,9 +54,6 @@ public final class AuditConfigurationValidator {
         AuditProperties.Mail mail = cfg.mail();
         if (mail == null || !mail.isEnabled()) return;
 
-        if (cfg.context() == null) {
-            throw new IllegalArgumentException("audit.context is required when mail is enabled");
-        }
         required(cfg.context().teamName(), "audit.context.team-name");
         required(cfg.context().gaVersion(), "audit.context.ga-version");
         required(cfg.context().sprintPhase(), "audit.context.sprint-phase");
@@ -145,8 +148,30 @@ public final class AuditConfigurationValidator {
                 throw new IllegalArgumentException(
                         "linked-bugs is a final Day 10 check and must not be configured for Day 3");
             }
+            validateCompletionComment(day, checkpoint.completionComment(), checkpoint.fields());
             if (day == 10) validateLinkedBugs(checkpoint.linkedBugs());
         });
+    }
+
+    private static void validateCompletionComment(
+            int day,
+            AuditProperties.CompletionCommentRule rule,
+            Map<String, AuditProperties.FieldRule> fields) {
+        if (rule == null) return;
+        required(rule.fieldRule(), "Day " + day + " completion-comment.field-rule");
+        if (!fields.containsKey(rule.fieldRule())) {
+            throw new IllegalArgumentException("Unknown field-rule for Day " + day +
+                    " completion-comment: " + rule.fieldRule());
+        }
+        if (rule.completedValues() == null || rule.completedValues().isBlank()) {
+            throw new IllegalArgumentException(
+                    "completed-values is required for Day " + day + " completion-comment");
+        }
+        if (rule.completedValueList().stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException("completed-values contains an empty $-separated " +
+                    "value for Day " + day + " completion-comment");
+        }
+        required(rule.commentPrefix(), "Day " + day + " completion-comment.comment-prefix");
     }
 
     private static void validateLinkedBugs(AuditProperties.LinkedBugRule rule) {

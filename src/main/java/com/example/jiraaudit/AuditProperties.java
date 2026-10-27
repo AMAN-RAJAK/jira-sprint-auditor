@@ -20,7 +20,8 @@ public record AuditProperties(
 ) {
     public record Jira(String baseUrl, String personalAccessToken) { }
     public record AuditContext(String teamName, String gaVersion, String sprintPhase) { }
-    public record Checkpoint(Map<String, FieldRule> fields, LinkedBugRule linkedBugs) { }
+    public record Checkpoint(Map<String, FieldRule> fields, LinkedBugRule linkedBugs,
+                             CompletionCommentRule completionComment) { }
     public record FieldRule(String label, String jiraField, String responsibleTeam,
                             String acceptedValues) {
         public static final String NON_EMPTY_VALUE = "__NON_EMPTY__";
@@ -37,6 +38,12 @@ public record AuditProperties(
     public record LinkedBugRule(String issueType, String resolvedStatuses) {
         public List<String> resolvedStatusList() {
             return dollarSeparatedValues(resolvedStatuses);
+        }
+    }
+    public record CompletionCommentRule(String fieldRule, String completedValues,
+                                        String commentPrefix) {
+        public List<String> completedValueList() {
+            return dollarSeparatedValues(completedValues);
         }
     }
     public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) {

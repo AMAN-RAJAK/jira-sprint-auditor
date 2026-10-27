@@ -101,6 +101,12 @@ class AuditPropertiesBindingTest {
                     .requiresNonEmptyValue());
             assertEquals(List.of("Resolved", "Closed", "Done"),
                     properties.checkpoints().get(10).linkedBugs().resolvedStatusList());
+            assertEquals("gwt-status",
+                    properties.checkpoints().get(10).completionComment().fieldRule());
+            assertEquals(List.of("Completed"),
+                    properties.checkpoints().get(10).completionComment().completedValueList());
+            assertEquals("Merged feature file link:",
+                    properties.checkpoints().get(10).completionComment().commentPrefix());
             assertEquals(List.of("WBS", "WORK_BREAKDOWN"),
                     properties.artifacts().day3WbsPrefixList());
             assertEquals(List.of("WBS", "WORK_BREAKDOWN"),

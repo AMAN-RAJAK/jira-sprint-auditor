@@ -61,7 +61,8 @@ public class AuditRunner implements ApplicationRunner {
         }
 
         Path workbook = reportWriter.write(checks, new ExcelReportWriter.ReportContext(
-                runDay, properties.jira().baseUrl(), properties.report().directory()));
+                runDay, properties.jira().baseUrl(), properties.report().directory(),
+                properties.context().gaVersion(), properties.context().sprintPhase()));
         Set<String> failedIssues = checks.stream()
                 .filter(check -> check.outcome() == CheckResult.Outcome.FAIL)
                 .map(CheckResult::issueKey).collect(Collectors.toSet());

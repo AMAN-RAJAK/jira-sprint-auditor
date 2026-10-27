@@ -84,6 +84,19 @@ audit:
           jira-field: customfield_10105
           responsible-team: PMG
           accepted-values: '__NON_EMPTY__'
+        gwt-status:
+          label: GWT Status
+          # Replace this sample with the real GWT Status Jira custom field ID.
+          jira-field: customfield_10106
+          responsible-team: DEV
+          accepted-values: 'Completed$Not Applicable'
+
+      # When the configured GWT field has any completed value below, a Jira
+      # comment must contain this prefix followed by a non-empty link/reference.
+      completion-comment:
+        field-rule: gwt-status
+        completed-values: 'Completed'
+        comment-prefix: 'Merged feature file link:'
 
       # Every directly linked issue of this type must have one of these statuses.
       linked-bugs:

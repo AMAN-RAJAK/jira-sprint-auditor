@@ -65,9 +65,11 @@ class ExcelReportWriterTest {
         ExcelReportWriter writer = new ExcelReportWriter(clock);
 
         Path report = writer.write(checks, new ExcelReportWriter.ReportContext(
-                10, "https://jira.company.example", tempDirectory.toString()));
+                10, "https://jira.company.example", tempDirectory.toString(),
+                "9.5 GA / Candidate", "Sprint 5"));
 
-        assertTrue(report.getFileName().toString().contains("day10-20261025-233000-000-"));
+        assertTrue(report.getFileName().toString().startsWith(
+                "AUDIT_9.5-GA-Candidate_Sprint-5_DAY10_20261025-233000-000_"));
         assertTrue(report.getFileName().toString().endsWith(".xlsx"));
         try (InputStream input = Files.newInputStream(report);
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {

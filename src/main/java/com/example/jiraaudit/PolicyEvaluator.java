@@ -56,6 +56,8 @@ public class PolicyEvaluator {
 
         addArtifactChecks(results, details, fields, properties, policyDay,
                 commentsNewestFirst == null ? List.of() : commentsNewestFirst);
+        addCompletionCommentCheck(results, details, fields, checkpoint,
+                commentsNewestFirst == null ? List.of() : commentsNewestFirst);
         if (policyDay == 10) {
             addLinkedBugChecks(results, details, fields, checkpoint.linkedBugs());
         }
@@ -63,7 +65,11 @@ public class PolicyEvaluator {
     }
 
     public boolean requiresComments(JiraClient.JiraIssue issue, AuditProperties properties, int runDay) {
-        if (AuditDay.policyDay(runDay) == 3 || issue.fields() == null) return false;
+        int policyDay = AuditDay.policyDay(runDay);
+        if (issue.fields() == null) return false;
+        AuditProperties.Checkpoint checkpoint = properties.checkpoints().get(policyDay);
+        if (completionCommentRequired(issue.fields(), checkpoint)) return true;
+        if (policyDay == 3) return false;
         JsonNode attachments = issue.fields().get("attachment");
         if (attachments == null || !attachments.isArray()) return false;
         List<String> filenames = attachmentNames(attachments);
@@ -79,6 +85,45 @@ public class PolicyEvaluator {
         boolean atddNotApplicable = hasNotApplicableFieldEvidence(
                 issue.fields(), fields, artifacts.atdd());
         return atddNotApplicable && !hasAttachment(filenames, artifacts.ut().prefix());
+    }
+
+    private static void addCompletionCommentCheck(
+            List<CheckResult> results,
+            IssueDetails details,
+            JsonNode fields,
+            AuditProperties.Checkpoint checkpoint,
+            List<JiraClient.JiraComment> comments) {
+        AuditProperties.CompletionCommentRule commentRule = checkpoint.completionComment();
+        if (commentRule == null || !completionCommentRequired(fields, checkpoint)) return;
+
+        JiraClient.JiraComment matchingComment = comments.stream()
+                .filter(comment -> hasValueAfterPrefix(
+                        commentText(comment.body()), commentRule.commentPrefix()))
+                .findFirst().orElse(null);
+        boolean passed = matchingComment != null;
+        String evidence = passed
+                ? "comment=" + matchingComment.id() + " (" + matchingComment.created() + ")"
+                : "comment=<not found>";
+        results.add(new CheckResult(details, "COMMENT", "MERGED_FEATURE_FILE_LINK",
+                "Merged Feature File Link", "comments + " + commentRule.fieldRule(),
+                "Newest-first comment containing \"" + commentRule.commentPrefix() +
+                        "\" followed by a non-empty link/reference",
+                evidence, passed ? PASS : FAIL,
+                passed
+                        ? "Merged feature file link comment is present for completed GWT Status"
+                        : "GWT Status is completed, but no comment contains \"" +
+                                commentRule.commentPrefix() +
+                                "\" followed by a non-empty link/reference"));
+    }
+
+    private static boolean completionCommentRequired(
+            JsonNode fields, AuditProperties.Checkpoint checkpoint) {
+        AuditProperties.CompletionCommentRule commentRule = checkpoint.completionComment();
+        if (commentRule == null) return false;
+        AuditProperties.FieldRule fieldRule = checkpoint.fields().get(commentRule.fieldRule());
+        if (fieldRule == null) return false;
+        return matchesAny(flattenValues(fields.get(fieldRule.jiraField())),
+                commentRule.completedValueList());
     }
 
     private static void addArtifactChecks(List<CheckResult> results, IssueDetails details,
@@ -448,6 +493,14 @@ public class PolicyEvaluator {
 
     private static boolean containsPhrase(String text, String phrase) {
         return normalizeText(text).contains(normalizeText(phrase));
+    }
+
+    private static boolean hasValueAfterPrefix(String text, String prefix) {
+        String normalizedText = normalizeText(text);
+        String normalizedPrefix = normalizeText(prefix);
+        int prefixStart = normalizedText.indexOf(normalizedPrefix);
+        if (prefixStart < 0) return false;
+        return !normalizedText.substring(prefixStart + normalizedPrefix.length()).trim().isEmpty();
     }
 
     private static String normalizeText(String value) {

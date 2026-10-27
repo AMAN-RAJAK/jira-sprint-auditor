@@ -272,7 +272,8 @@ class PolicyEvaluatorTest {
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
-                base.checkpoints().get(3).linkedBugs()));
+                base.checkpoints().get(3).linkedBugs(),
+                base.checkpoints().get(3).completionComment()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
                 checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
         var issue = issue("""
@@ -299,7 +300,8 @@ class PolicyEvaluatorTest {
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
-                base.checkpoints().get(3).linkedBugs()));
+                base.checkpoints().get(3).linkedBugs(),
+                base.checkpoints().get(3).completionComment()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
                 checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
 
@@ -351,6 +353,48 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    void completedGwtRequiresMergedFeatureFileLinkComment() throws Exception {
+        AuditProperties properties = withGwtCompletionComment();
+        var completed = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","gwt":"Completed",
+                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                 {"filename":"ATDD_results"},{"filename":"ST_results"}]}
+                """);
+
+        assertTrue(evaluator.requiresComments(completed, properties, 10));
+        CheckResult missingLink = result(evaluator.evaluate(completed, properties, 10,
+                List.of(comment("1", "Merged feature file link:",
+                        "2026-10-25T10:00:00Z"))), "MERGED_FEATURE_FILE_LINK");
+        assertEquals(FAIL, missingLink.outcome());
+        assertTrue(missingLink.reason().contains("GWT Status is completed"));
+
+        List<JiraClient.JiraComment> newestFirst = List.of(
+                comment("3", "Unrelated newest comment", "2026-10-25T12:00:00Z"),
+                comment("2", "Merged feature file link: https://git.company/features/PAY-102",
+                        "2026-10-25T11:00:00Z"));
+        CheckResult validLink = result(evaluator.evaluate(completed, properties, 10,
+                newestFirst), "MERGED_FEATURE_FILE_LINK");
+        assertEquals(PASS, validLink.outcome());
+        assertTrue(validLink.actual().contains("comment=2"));
+    }
+
+    @Test
+    void nonCompletedGwtDoesNotRequireMergedFeatureComment() throws Exception {
+        AuditProperties properties = withGwtCompletionComment();
+        var inProgress = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","gwt":"In Progress",
+                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                 {"filename":"ATDD_results"},{"filename":"ST_results"}]}
+                """);
+
+        assertFalse(evaluator.requiresComments(inProgress, properties, 10));
+        assertTrue(evaluator.evaluate(inProgress, properties, 10, List.of()).stream()
+                .noneMatch(check -> check.ruleKey().equals("MERGED_FEATURE_FILE_LINK")));
+    }
+
+    @Test
     void rejectsMissingEssentialJiraMetadata() throws Exception {
         var fields = MAPPER.readTree("""
                 {"summary":"Story","assignee":null,"coding":"In Progress",
@@ -367,6 +411,22 @@ class PolicyEvaluatorTest {
     private CheckResult result(List<CheckResult> results, String ruleKey) {
         return results.stream().filter(result -> result.ruleKey().equals(ruleKey))
                 .findFirst().orElseThrow();
+    }
+
+    private AuditProperties withGwtCompletionComment() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        Map<String, AuditProperties.FieldRule> fields =
+                new LinkedHashMap<>(base.checkpoints().get(10).fields());
+        fields.put("gwt-status", new AuditProperties.FieldRule(
+                "GWT Status", "gwt", "DEV", "Completed$In Progress$Not Applicable"));
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        checkpoints.put(10, new AuditProperties.Checkpoint(fields,
+                base.checkpoints().get(10).linkedBugs(),
+                new AuditProperties.CompletionCommentRule(
+                        "gwt-status", "Completed", "Merged feature file link:")));
+        return new AuditProperties(base.jira(), base.jql(), 10, base.pageSize(), checkpoints,
+                base.artifacts(), base.report(), base.context(), base.mail());
     }
 
     private JiraClient.JiraIssue issue(String json) throws Exception {

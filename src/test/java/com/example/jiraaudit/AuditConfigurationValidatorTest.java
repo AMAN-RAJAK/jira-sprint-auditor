@@ -92,7 +92,7 @@ class AuditConfigurationValidatorTest {
         AuditProperties.Mail disabled = new AuditProperties.Mail(
                 false, true, null, null, null, null, null);
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
-                withMail(base, null, disabled)));
+                withMail(base, context, disabled)));
     }
 
     @Test
@@ -131,7 +131,7 @@ class AuditConfigurationValidatorTest {
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(10, new AuditProperties.Checkpoint(
-                base.checkpoints().get(10).fields(), null));
+                base.checkpoints().get(10).fields(), null, null));
 
         IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
@@ -140,11 +140,35 @@ class AuditConfigurationValidatorTest {
 
         checkpoints.put(10, new AuditProperties.Checkpoint(
                 base.checkpoints().get(10).fields(),
-                new AuditProperties.LinkedBugRule("Bug", "Resolved$$Done")));
+                new AuditProperties.LinkedBugRule("Bug", "Resolved$$Done"), null));
         IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, checkpoints, base.artifacts())));
         assertTrue(empty.getMessage().contains("empty $-separated value"));
+    }
+
+    @Test
+    void completionCommentMustReferenceAConfiguredFieldAndValidCompletedValues() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        AuditProperties.Checkpoint dayTen = base.checkpoints().get(10);
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
+                dayTen.linkedBugs(), new AuditProperties.CompletionCommentRule(
+                "unknown-field", "Completed", "Merged feature file link:")));
+
+        IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(unknown.getMessage().contains("Unknown field-rule"));
+
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
+                dayTen.linkedBugs(), new AuditProperties.CompletionCommentRule(
+                "coding-status", "Completed$$Done", "Merged feature file link:")));
+        IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(empty.getMessage().contains("empty $-separated"));
     }
 
     @Test
@@ -157,7 +181,8 @@ class AuditConfigurationValidatorTest {
                 "Done - On Time$Not Done$Not Applicable"));
         Map<Integer, AuditProperties.Checkpoint> checkpoints = new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(10, new AuditProperties.Checkpoint(dayTen,
-                base.checkpoints().get(10).linkedBugs()));
+                base.checkpoints().get(10).linkedBugs(),
+                base.checkpoints().get(10).completionComment()));
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
                 copy(base, base.jira(), 10, checkpoints, base.artifacts())));
 
@@ -193,7 +218,8 @@ class AuditConfigurationValidatorTest {
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
-                base.checkpoints().get(3).linkedBugs()));
+                base.checkpoints().get(3).linkedBugs(),
+                base.checkpoints().get(3).completionComment()));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(

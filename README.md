@@ -14,12 +14,13 @@ For each ticket returned by the configured JQL, the application:
 2. checks the fields configured for the selected checkpoint and records the
    configured team responsible for each failed field;
 3. checks the checkpoint's required attachment filename rules;
-4. reads newest-first Jira comments only when a missing Day-10 artifact needs
-   comment evidence; and
-5. verifies that every directly linked Bug is resolved on Day 10; and
-6. writes an overall `PASS` or `FAIL` and detailed remarks to a grid-style Excel
+4. reads newest-first Jira comments when configured artifact or completion
+   evidence is required;
+5. requires a merged feature-file link comment when GWT Status is completed;
+6. verifies that every directly linked Bug is resolved on Day 10;
+7. writes an overall `PASS` or `FAIL` and detailed remarks to a grid-style Excel
    report; and
-7. optionally emails an HTML summary, an inline team-wise pie chart, and the
+8. optionally emails an HTML summary, an inline team-wise pie chart, and the
    Excel report through the configured company SMTP server.
 
 The checkpoint is supplied explicitly as `3` or `10`. There is no date,
@@ -49,6 +50,9 @@ sprint-calendar, or time-zone calculation.
 - UT and ATDD may both be attached; neither artifact invalidates the other.
 - Every directly linked issue whose type matches the configured Bug issue type
   must have one of the configured resolved statuses.
+- When the configured GWT Status has a completed value, a newest-first comment
+  must contain `Merged feature file link:` followed by a non-empty link or
+  reference. The field, completed values, and prefix are configurable.
 
 The Day-10 artifact decisions are:
 
@@ -59,6 +63,7 @@ The Day-10 artifact decisions are:
 | ST | If ST Status is configured as Not Applicable, ST must be absent; otherwise ST attachment or the configured ST comment is required |
 | ATDD | If ATDD Status is applicable, ATDD must be attached and cannot be waived by a comment; otherwise ATDD is optional |
 | UT | If ATDD Status is Not Applicable, UT must be attached or have the configured `UT Not Applicable` comment; otherwise UT is optional |
+| GWT completion comment | When GWT Status is completed, require the configured comment prefix followed by a non-empty link/reference |
 | Linked Bugs | Every directly linked Bug must have a configured resolved status; unresolved or incomplete linked-issue data fails the parent ticket |
 
 The ATDD/UT rules are:
@@ -84,8 +89,11 @@ pages are loaded, and the newest matching comment is recorded in the evidence.
 Each run creates a file like:
 
 ```text
-reports/jira-audit-day10-20261025-063000-000-a1b2c3d4.xlsx
+reports/AUDIT_9.5-GA_Sprint-5_DAY10_20261025-063000-000_a1b2c3d4.xlsx
 ```
+
+GA version and sprint phase come from `audit.context`. Unsafe filename
+characters and spaces are replaced with `-`.
 
 The `Audit Results` sheet contains one row per JQL ticket:
 
@@ -185,12 +193,14 @@ Configure these company-specific values in `company-audit.yml`:
 - `audit.jql`: the complete story scope for the audit;
 - `audit.checkpoints.3.fields`: Day-3 Jira field IDs, responsible teams, and possible values;
 - `audit.checkpoints.10.fields`: Day-10 Jira field IDs, responsible teams, and possible values;
-- `audit.context` and `audit.mail` when automated mail delivery is enabled;
+- `audit.context.ga-version` and `audit.context.sprint-phase` for report names;
+- `audit.context.team-name` and `audit.mail` when automated mail delivery is enabled;
 - `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename marker or alternative markers;
 - Day-10 WBS markers and CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
 - each mapped artifact's configurable `not-applicable-values`;
 - CWC, UT, and ST standard `comment-contains` phrases;
+- the optional checkpoint `completion-comment` rule for completed GWT Status;
 - the linked Bug issue type and resolved workflow statuses; and
 - report output and failure behavior.
 
@@ -270,6 +280,22 @@ The `$` character is reserved as the separator and cannot be part of an
 accepted Jira value. Leading and trailing spaces around each separated value
 are ignored. Empty values such as `Done$$Not Applicable` are rejected during
 startup validation.
+
+Configure the GWT completion-comment validation inside the applicable
+checkpoint. Both lists use case-insensitive matching, and completed values use
+the standard `$` separator:
+
+```yaml
+completion-comment:
+  field-rule: gwt-status
+  completed-values: 'Completed$Done'
+  comment-prefix: 'Merged feature file link:'
+```
+
+When the mapped GWT field has one of those values, a comment such as
+`Merged feature file link: https://git.company/features/PAY-102` passes. The
+prefix without any value after it fails. Comments are searched newest-first,
+and this remains a read-only validation—the application never posts to Jira.
 
 When a field does not require a specific value but must contain something, use
 the reserved `__NON_EMPTY__` rule by itself. For example:
@@ -378,6 +404,6 @@ edited `company-audit.yml` exists in the repository root.
   inspected only for the Day-10 linked Bug check.
 - Artifact contents are not inspected; checks use the WBS filename markers and
   the other artifacts' filename prefixes.
-- The application does not schedule itself, modify Jira, send notifications,
-  or keep audit history.
+- The application does not schedule itself, modify Jira, or keep audit history.
+  SMTP report delivery is optional and disabled by default.
 - The generated `.xlsx` workbook is the audit snapshot for that run.
