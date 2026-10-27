@@ -49,16 +49,18 @@ public class SmtpAuditMailer implements AuditMailer {
     public void sendIfEnabled(List<CheckResult> checks, int totalIssues,
                               int runDay, Path report) {
         AuditProperties.Mail mail = properties.mail();
-        if (mail == null || !mail.isEnabled()) return;
-
         try {
             AuditEmail email = compose(checks, totalIssues, runDay, report);
+            printToConsole(email, mail != null && mail.isEnabled());
+            if (mail == null || !mail.isEnabled()) return;
+
             transport.send(mail, email);
             System.out.println("Audit email sent to: " + String.join(", ", mail.to()));
         } catch (Exception error) {
-            if (mail.shouldFailOnError()) {
+            if (mail == null || !mail.isEnabled() || mail.shouldFailOnError()) {
                 throw new IllegalStateException(
-                        "Excel report was created, but the audit email could not be sent", error);
+                        "Excel report was created, but the audit email content could not be " +
+                                "prepared or sent", error);
             }
             System.err.println("WARNING: Audit email could not be sent: " + error.getMessage());
         }
@@ -97,8 +99,21 @@ public class SmtpAuditMailer implements AuditMailer {
                 fieldChecks.size(), failedFieldChecks.size(), nonFieldFailures,
                 nonFieldFailureTickets, overall, runDay, generatedAt);
         byte[] chart = pieChart(teamStats);
-        return new AuditEmail(properties.mail().subject(), plain, html, chart,
+        return new AuditEmail(mailSubject(runDay), plain, html, chart,
                 CHART_CONTENT_ID, report);
+    }
+
+    private void printToConsole(AuditEmail email, boolean deliveryEnabled) {
+        System.out.println();
+        System.out.println("================ AUDIT EMAIL PREVIEW ================");
+        System.out.println("Delivery: " + (deliveryEnabled ? "ENABLED" : "DISABLED"));
+        System.out.println("Subject: " + email.subject());
+        System.out.println("-------------------- MAIL BODY ----------------------");
+        System.out.print(email.plainText());
+        if (!email.plainText().endsWith("\n")) System.out.println();
+        System.out.println("Attachment: " + email.attachment().toAbsolutePath());
+        System.out.println("============== END AUDIT EMAIL PREVIEW ==============");
+        System.out.println();
     }
 
     private Map<String, TeamStats> teamStats(List<CheckResult> failedFields) {
@@ -123,7 +138,7 @@ public class SmtpAuditMailer implements AuditMailer {
                             int fieldChecks, int failedFields,
                             long nonFieldFailures, long nonFieldFailureTickets,
                             String overall, int runDay, String generatedAt) {
-        AuditProperties.AuditContext context = properties.context();
+        AuditProperties.AuditContext context = mailContext();
         String resultColor = "PASS".equals(overall) ? "#1b7f3a" : "#b42318";
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#202124\">")
@@ -212,7 +227,7 @@ public class SmtpAuditMailer implements AuditMailer {
                              int fieldChecks, int failedFields,
                              long nonFieldFailures, long nonFieldFailureTickets,
                              String overall, int runDay, String generatedAt) {
-        AuditProperties.AuditContext context = properties.context();
+        AuditProperties.AuditContext context = mailContext();
         StringBuilder text = new StringBuilder()
                 .append("Jira Sprint Audit Summary\n")
                 .append("Team: ").append(context.teamName()).append('\n')
@@ -236,7 +251,50 @@ public class SmtpAuditMailer implements AuditMailer {
                     .append(": ").append(stats.pendingTickets()).append(" tickets, ")
                     .append(stats.pendingFields()).append(" fields\n"));
         }
+        text.append("\nFailed ticket details:\n");
+        if (failuresByIssue.isEmpty()) {
+            text.append("- All tickets passed.\n");
+        } else {
+            int rendered = 0;
+            for (List<CheckResult> failures : failuresByIssue.values()) {
+                if (rendered++ == MAX_TICKET_DETAILS) break;
+                IssueDetails issue = failures.get(0).issue();
+                text.append("- ").append(issue.issueKey()).append(" | Assignee: ")
+                        .append(emptyAsDash(issue.assigneeName())).append('\n');
+                failures.forEach(check -> text.append("  * ").append(check.checkName())
+                        .append(" [").append("FIELD".equals(check.checkType())
+                                ? normalizedTeam(check.responsibleTeam()) : check.checkType())
+                        .append("]: ").append(check.reason()).append('\n'));
+            }
+            if (failuresByIssue.size() > MAX_TICKET_DETAILS) {
+                text.append("- Showing the first ").append(MAX_TICKET_DETAILS)
+                        .append(" failed tickets; see the Excel report for all details.\n");
+            }
+        }
         return text.append("\nThe complete Excel report is attached.\n").toString();
+    }
+
+    private AuditProperties.AuditContext mailContext() {
+        AuditProperties.AuditContext context = properties.context();
+        if (context == null) {
+            return new AuditProperties.AuditContext(
+                    "Not configured", "Not configured", "Not configured");
+        }
+        return new AuditProperties.AuditContext(
+                displayValue(context.teamName()), displayValue(context.gaVersion()),
+                displayValue(context.sprintPhase()));
+    }
+
+    private String mailSubject(int runDay) {
+        AuditProperties.Mail mail = properties.mail();
+        if (mail != null && mail.subject() != null && !mail.subject().isBlank()) {
+            return mail.subject().trim();
+        }
+        return "Jira Sprint Audit Report - Day " + runDay;
+    }
+
+    private static String displayValue(String value) {
+        return value == null || value.isBlank() ? "Not configured" : value.trim();
     }
 
     private byte[] pieChart(Map<String, TeamStats> teamStats) throws IOException {

@@ -124,6 +124,10 @@ audit:
     subject: '${TEAM_NAME:CHANGE_ME} - ${GA_VERSION:CHANGE_ME} Audit Report for ${SPRINT_PHASE:CHANGE_ME}'
 ```
 
+The resolved email subject, complete plain-text body, delivery flag state, and
+report attachment path are printed to the console whether email delivery is
+enabled or disabled. This makes the message easy to review before enabling SMTP.
+
 The application deliberately does not parse team, GA version, or sprint phase
 from JQL. Explicit context values keep the subject and report summary reliable
 for differently formatted queries.
