@@ -14,9 +14,12 @@ public record AuditProperties(
         Integer pageSize,
         Map<Integer, Checkpoint> checkpoints,
         Artifacts artifacts,
-        Report report
+        Report report,
+        AuditContext context,
+        Mail mail
 ) {
     public record Jira(String baseUrl, String personalAccessToken) { }
+    public record AuditContext(String teamName, String gaVersion, String sprintPhase) { }
     public record Checkpoint(Map<String, FieldRule> fields, LinkedBugRule linkedBugs) { }
     public record FieldRule(String label, String jiraField, String responsibleTeam,
                             String acceptedValues) {
@@ -54,6 +57,19 @@ public record AuditProperties(
         }
     }
     public record Report(String directory, Boolean failOnViolations, Boolean failOnEmpty) { }
+    public record Mail(Boolean enabled, Boolean failOnError, String from, List<String> to,
+                       List<String> cc, String subject, Smtp smtp) {
+        public boolean isEnabled() {
+            return Boolean.TRUE.equals(enabled);
+        }
+
+        public boolean shouldFailOnError() {
+            return !Boolean.FALSE.equals(failOnError);
+        }
+    }
+    public record Smtp(String hostIp, Integer port, String protocol,
+                       Boolean authenticationRequired, String username, String password,
+                       Boolean startTlsEnabled) { }
 
     private static List<String> dollarSeparatedValues(String configuredValues) {
         if (configuredValues == null) return List.of();

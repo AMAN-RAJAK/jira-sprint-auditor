@@ -11,6 +11,27 @@ audit:
   run-day: ${AUDIT_RUN_DAY}
   page-size: 100
 
+  # Used in the email subject and summary. These values are not parsed from JQL.
+  context:
+    team-name: ${TEAM_NAME:CHANGE_ME}
+    ga-version: ${GA_VERSION:CHANGE_ME}
+    sprint-phase: ${SPRINT_PHASE:CHANGE_ME}
+
+  # No SMTP connection is attempted unless this flag is true.
+  mail:
+    enabled: ${AUDIT_MAIL_ENABLED:false}
+    fail-on-error: true
+    from: ${AUDIT_MAIL_FROM:audit-sender@company.example}
+    to:
+      - ${AUDIT_MAIL_TO:audit-recipient@company.example}
+    cc: []
+    subject: '${TEAM_NAME:CHANGE_ME} - ${GA_VERSION:CHANGE_ME} Audit Report for ${SPRINT_PHASE:CHANGE_ME}'
+
+    # SMTP values are mapped in application.yml from the existing company
+    # properties: mail.smtp.host, mail.smtp.port,
+    # smptpAuthenticationRequired, smtpHostip, smtpPassword, smtpPort,
+    # smtpProtocol, and smtpUsername.
+
   # Each checkpoint independently declares the fields checked on that day.
   # A field passes when its Jira value matches ANY accepted value.
   # accepted-values is one quoted string. Separate values with $, not commas.

@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,17 +32,15 @@ class AuditPropertiesBindingTest {
 
     @Test
     void defaultApplicationMapsIntellijEnvironmentVariablesIntoJiraSettings() {
-        ApplicationContextRunner defaultConfigRunner = contextRunner.withInitializer(context -> {
-            try {
-                var sources = new YamlPropertySourceLoader().load("application",
-                        new ClassPathResource("application.yml"));
-                sources.forEach(source -> context.getEnvironment().getPropertySources().addLast(source));
-            } catch (IOException error) {
-                throw new IllegalStateException(error);
-            }
-        }).withPropertyValues(
+        ApplicationContextRunner defaultConfigRunner = withDefaultApplication().withPropertyValues(
                 "JIRA_BASE_URL=https://jira.company.example/jira",
-                "JIRA_ACCESS_TOKEN=intellij-pat"
+                "JIRA_ACCESS_TOKEN=intellij-pat",
+                "smtpHostip=mail.company.example",
+                "smtpPort=2525",
+                "smtpProtocol=smtp",
+                "smptpAuthenticationRequired=true",
+                "smtpUsername=audit-user",
+                "smtpPassword=test-password"
         );
 
         defaultConfigRunner.run(context -> {
@@ -50,7 +49,24 @@ class AuditPropertiesBindingTest {
             assertNotNull(properties.jira());
             assertEquals("https://jira.company.example/jira", properties.jira().baseUrl());
             assertEquals("intellij-pat", properties.jira().personalAccessToken());
+            assertEquals("mail.company.example", properties.mail().smtp().hostIp());
+            assertEquals(2525, properties.mail().smtp().port());
+            assertTrue(properties.mail().smtp().authenticationRequired());
+            assertEquals("audit-user", properties.mail().smtp().username());
             assertDoesNotThrow(() -> AuditConfigurationValidator.validateCredentials(properties));
+        });
+    }
+
+    @Test
+    void dottedCompanySmtpHostAndPortPropertiesAreAlsoMapped() {
+        withDefaultApplication().withPropertyValues(
+                "mail.smtp.host=relay.company.example",
+                "mail.smtp.port=1025"
+        ).run(context -> {
+            assertNull(context.getStartupFailure());
+            AuditProperties.Smtp smtp = context.getBean(AuditProperties.class).mail().smtp();
+            assertEquals("relay.company.example", smtp.hostIp());
+            assertEquals(1025, smtp.port());
         });
     }
 
@@ -93,6 +109,10 @@ class AuditPropertiesBindingTest {
                     properties.artifacts().day10().atdd().notApplicableValueList());
             assertEquals("CWC Not Applicable",
                     properties.artifacts().day10().cwc().commentContains());
+            assertEquals("CHANGE_ME", properties.context().teamName());
+            assertEquals("CHANGE_ME - CHANGE_ME Audit Report for CHANGE_ME",
+                    properties.mail().subject());
+            assertFalse(properties.mail().isEnabled());
             assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(properties));
         });
     }
@@ -112,6 +132,18 @@ class AuditPropertiesBindingTest {
                 messages.append(cause.getMessage()).append('\n');
             }
             assertTrue(messages.toString().contains("left unbound"), messages::toString);
+        });
+    }
+
+    private ApplicationContextRunner withDefaultApplication() {
+        return contextRunner.withInitializer(context -> {
+            try {
+                var sources = new YamlPropertySourceLoader().load("application",
+                        new ClassPathResource("application.yml"));
+                sources.forEach(source -> context.getEnvironment().getPropertySources().addLast(source));
+            } catch (IOException error) {
+                throw new IllegalStateException(error);
+            }
         });
     }
 

@@ -1,5 +1,8 @@
 package com.example.jiraaudit;
 
+import jakarta.mail.internet.AddressException;
+import jakarta.mail.internet.InternetAddress;
+
 import java.net.URI;
 import java.util.HashSet;
 import java.util.List;
@@ -38,6 +41,66 @@ public final class AuditConfigurationValidator {
         validateArtifacts(cfg.artifacts(), cfg.checkpoints().get(10).fields());
         if (cfg.report() == null) throw new IllegalArgumentException("audit.report is required");
         required(cfg.report().directory(), "audit.report.directory");
+        validateMail(cfg);
+    }
+
+    private static void validateMail(AuditProperties cfg) {
+        AuditProperties.Mail mail = cfg.mail();
+        if (mail == null || !mail.isEnabled()) return;
+
+        if (cfg.context() == null) {
+            throw new IllegalArgumentException("audit.context is required when mail is enabled");
+        }
+        required(cfg.context().teamName(), "audit.context.team-name");
+        required(cfg.context().gaVersion(), "audit.context.ga-version");
+        required(cfg.context().sprintPhase(), "audit.context.sprint-phase");
+        required(mail.from(), "audit.mail.from");
+        validateAddress(mail.from(), "audit.mail.from");
+        if (mail.to() == null || mail.to().isEmpty()) {
+            throw new IllegalArgumentException("audit.mail.to requires at least one recipient");
+        }
+        validateAddresses(mail.to(), "audit.mail.to");
+        if (mail.cc() != null) validateAddresses(mail.cc(), "audit.mail.cc");
+        required(mail.subject(), "audit.mail.subject");
+        if (mail.subject().contains("\r") || mail.subject().contains("\n")) {
+            throw new IllegalArgumentException("audit.mail.subject must be a single line");
+        }
+
+        if (mail.smtp() == null) {
+            throw new IllegalArgumentException("audit.mail.smtp is required when mail is enabled");
+        }
+        AuditProperties.Smtp smtp = mail.smtp();
+        required(smtp.hostIp(),
+                "smtpHostip / mail.smtp.host / audit.mail.smtp.host-ip");
+        if (smtp.port() == null || smtp.port() < 1 || smtp.port() > 65_535) {
+            throw new IllegalArgumentException(
+                    "smtpPort / mail.smtp.port / audit.mail.smtp.port must be 1..65535");
+        }
+        required(smtp.protocol(), "smtpProtocol / audit.mail.smtp.protocol");
+        if (!Set.of("smtp", "smtps").contains(normalize(smtp.protocol()))) {
+            throw new IllegalArgumentException("smtpProtocol must be smtp or smtps");
+        }
+        if (Boolean.TRUE.equals(smtp.authenticationRequired())) {
+            required(smtp.username(), "smtpUsername / audit.mail.smtp.username");
+            required(smtp.password(), "smtpPassword / audit.mail.smtp.password");
+        }
+    }
+
+    private static void validateAddresses(List<String> addresses, String settingName) {
+        for (String address : addresses) {
+            required(address, settingName + " recipient");
+            validateAddress(address, settingName);
+        }
+    }
+
+    private static void validateAddress(String address, String settingName) {
+        try {
+            InternetAddress parsed = new InternetAddress(address, true);
+            parsed.validate();
+        } catch (AddressException error) {
+            throw new IllegalArgumentException("Invalid email address in " + settingName + ": " + address,
+                    error);
+        }
     }
 
     private static void validateCheckpoints(Map<Integer, AuditProperties.Checkpoint> checkpoints) {

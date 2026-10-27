@@ -15,7 +15,7 @@ class JiraAuditApplicationTest {
     void sendsOnlyTheDataCenterPersonalAccessTokenAsBearerAuthentication() {
         AuditProperties settings = new AuditProperties(
                 new AuditProperties.Jira("https://jira.company.example/jira", "secret-test-pat"),
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
         RestClient.Builder builder = JiraAuditApplication.configureJiraRestClient(
                 RestClient.builder(), settings);
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

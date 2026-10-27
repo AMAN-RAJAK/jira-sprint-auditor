@@ -14,7 +14,7 @@ final class TestAuditProperties {
         return new AuditProperties(
                 new AuditProperties.Jira("https://jira.company.example", "test-pat"),
                 "project = PAY AND sprint = 123", day, 100,
-                checkpoints(), artifacts(), report);
+                checkpoints(), artifacts(), report, null, null);
     }
 
     static Map<Integer, AuditProperties.Checkpoint> checkpoints() {

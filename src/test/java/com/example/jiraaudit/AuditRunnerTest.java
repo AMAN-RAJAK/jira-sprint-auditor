@@ -36,11 +36,18 @@ class AuditRunnerTest {
                  "attachment":[{"filename":"WBS_scope.xlsx"}]}
                 """);
         AtomicReference<Set<String>> requested = new AtomicReference<>();
+        AtomicInteger mailCalls = new AtomicInteger();
+        AtomicReference<Path> mailedReport = new AtomicReference<>();
         JiraClient client = (jql, requestedFields, pageSize) -> {
             requested.set(Set.copyOf(requestedFields));
             return List.of(new JiraClient.JiraIssue("10002", "PAY-102", fields));
         };
-        AuditRunner runner = runner(properties, client);
+        AuditRunner runner = runner(properties, client, (checks, totalIssues, runDay, report) -> {
+            mailCalls.incrementAndGet();
+            assertEquals(1, totalIssues);
+            assertEquals(3, runDay);
+            mailedReport.set(report);
+        });
 
         runner.run(null);
 
@@ -48,6 +55,8 @@ class AuditRunnerTest {
         assertEquals(Set.of("summary", "assignee", "status", "attachment", "coding", "download"),
                 requested.get());
         assertFalse(requested.get().contains("st"));
+        assertEquals(1, mailCalls.get());
+        assertTrue(Files.exists(mailedReport.get()));
         try (InputStream input = Files.newInputStream(onlyWorkbook());
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {
             assertEquals(1, workbook.getNumberOfSheets());
@@ -154,8 +163,14 @@ class AuditRunnerTest {
     }
 
     private AuditRunner runner(AuditProperties properties, JiraClient client) {
+        return runner(properties, client, (checks, totalIssues, runDay, report) -> { });
+    }
+
+    private AuditRunner runner(AuditProperties properties, JiraClient client,
+                               AuditMailer mailer) {
         Clock clock = Clock.fixed(Instant.parse("2026-10-25T06:30:00Z"), ZoneOffset.UTC);
-        return new AuditRunner(properties, client, new PolicyEvaluator(), new ExcelReportWriter(clock));
+        return new AuditRunner(properties, client, new PolicyEvaluator(),
+                new ExcelReportWriter(clock), mailer);
     }
 
     private Path onlyWorkbook() throws Exception {
@@ -171,6 +186,7 @@ class AuditRunnerTest {
                 new AuditProperties.Report(tempDirectory.toString(), true, failOnEmpty));
         if (runDay != null) return base;
         return new AuditProperties(base.jira(), base.jql(), null, base.pageSize(),
-                base.checkpoints(), base.artifacts(), base.report());
+                base.checkpoints(), base.artifacts(), base.report(),
+                base.context(), base.mail());
     }
 }

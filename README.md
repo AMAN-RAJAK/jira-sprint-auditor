@@ -18,7 +18,9 @@ For each ticket returned by the configured JQL, the application:
    comment evidence; and
 5. verifies that every directly linked Bug is resolved on Day 10; and
 6. writes an overall `PASS` or `FAIL` and detailed remarks to a grid-style Excel
-   report.
+   report; and
+7. optionally emails an HTML summary, an inline team-wise pie chart, and the
+   Excel report through the configured company SMTP server.
 
 The checkpoint is supplied explicitly as `3` or `10`. There is no date,
 sprint-calendar, or time-zone calculation.
@@ -99,6 +101,73 @@ The `Audit Results` sheet contains one row per JQL ticket:
 | Responsible Team | Teams and field labels for failed field checks, such as `DEV: Coding Status, Download \| PQM: ATDD Status`; `N/A` when no field check failed |
 | Remarks | Failure reasons with expected/actual values, or accepted Not Applicable evidence |
 
+## Optional email delivery
+
+Email delivery is disabled by default. It runs only after the Excel report has
+been created and sends reports for both passing and failing audits. Configure
+the audit context and mail envelope in `company-audit.yml`:
+
+```yaml
+audit:
+  context:
+    team-name: ${TEAM_NAME:CHANGE_ME}
+    ga-version: ${GA_VERSION:CHANGE_ME}
+    sprint-phase: ${SPRINT_PHASE:CHANGE_ME}
+
+  mail:
+    enabled: ${AUDIT_MAIL_ENABLED:false}
+    fail-on-error: true
+    from: ${AUDIT_MAIL_FROM:audit-sender@company.example}
+    to:
+      - ${AUDIT_MAIL_TO:audit-recipient@company.example}
+    cc: []
+    subject: '${TEAM_NAME:CHANGE_ME} - ${GA_VERSION:CHANGE_ME} Audit Report for ${SPRINT_PHASE:CHANGE_ME}'
+```
+
+The application deliberately does not parse team, GA version, or sprint phase
+from JQL. Explicit context values keep the subject and report summary reliable
+for differently formatted queries.
+
+The existing company SMTP property names are supported directly through the
+mappings in `application.yml`:
+
+| Company property | Purpose |
+|---|---|
+| `smtpHostip` or `mail.smtp.host` | SMTP host name or IP address |
+| `smtpPort` or `mail.smtp.port` | SMTP port |
+| `smptpAuthenticationRequired` | Whether SMTP authentication is required; the existing spelling is intentionally supported |
+| `smtpProtocol` | `smtp` or `smtps` |
+| `smtpUsername` | SMTP user when authentication is enabled |
+| `smtpPassword` | SMTP password when authentication is enabled |
+| `smtpStartTlsEnabled` | Enables STARTTLS; defaults to `true` |
+
+Uppercase environment aliases such as `SMTP_HOST_IP`, `SMTP_PORT`,
+`SMTP_USERNAME`, and `SMTP_PASSWORD` are also supported. Keep the SMTP password
+outside source-controlled YAML. For example, the dotted properties can be
+provided as JVM system properties:
+
+```bash
+java \
+  -Dmail.smtp.host=mail.company.example \
+  -Dmail.smtp.port=587 \
+  -DsmtpProtocol=smtp \
+  -DsmptpAuthenticationRequired=true \
+  -DsmtpUsername=audit-user \
+  -DsmtpPassword="$SMTP_PASSWORD" \
+  -jar target/jira-sprint-auditor-1.0.0.jar --audit.run-day=10
+```
+
+The message contains overall ticket PASS/FAIL counts, configured and failed
+field counts, distinct pending-ticket and pending-field counts by responsible
+team, non-field compliance failure counts, and up to 50 failed-ticket details.
+The pie chart represents failed fields grouped by `responsible-team` and is
+generated locally; no Jira information is sent to an external chart service.
+The `.xlsx` report is attached to the same message.
+
+When `fail-on-error` is `true`, SMTP delivery failure makes the application
+fail after preserving the generated Excel report. When it is `false`, the mail
+error is logged and the normal audit exit result is retained.
+
 ## Required configuration
 
 Copy the template into the project root:
@@ -112,6 +181,7 @@ Configure these company-specific values in `company-audit.yml`:
 - `audit.jql`: the complete story scope for the audit;
 - `audit.checkpoints.3.fields`: Day-3 Jira field IDs, responsible teams, and possible values;
 - `audit.checkpoints.10.fields`: Day-10 Jira field IDs, responsible teams, and possible values;
+- `audit.context` and `audit.mail` when automated mail delivery is enabled;
 - `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename marker or alternative markers;
 - Day-10 WBS markers and CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;

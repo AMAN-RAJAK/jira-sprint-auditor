@@ -48,6 +48,73 @@ class AuditConfigurationValidatorTest {
     }
 
     @Test
+    void mailSettingsAreValidatedOnlyWhenMailIsEnabled() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        AuditProperties.AuditContext context = new AuditProperties.AuditContext(
+                "Payments", "9.5-GA", "Sprint-5");
+        AuditProperties.Smtp smtp = new AuditProperties.Smtp(
+                "mail.company.example", 2525, "smtp", true,
+                "audit-user", "test-password", true);
+        AuditProperties.Mail enabled = new AuditProperties.Mail(
+                true, true, "audit@company.example",
+                List.of("dev@company.example"), List.of("pqm@company.example"),
+                "Payments - 9.5-GA Audit Report for Sprint-5", smtp);
+        AuditProperties valid = withMail(base, context, enabled);
+
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(valid));
+
+        AuditProperties.Mail missingHost = new AuditProperties.Mail(
+                true, true, enabled.from(), enabled.to(), enabled.cc(), enabled.subject(),
+                new AuditProperties.Smtp(" ", 2525, "smtp", true,
+                        "audit-user", "test-password", true));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        withMail(base, context, missingHost)))
+                .getMessage().contains("smtpHostip"));
+
+        AuditProperties.Mail badRecipient = new AuditProperties.Mail(
+                true, true, enabled.from(), List.of("not-an-email"), enabled.cc(),
+                enabled.subject(), smtp);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        withMail(base, context, badRecipient)))
+                .getMessage().contains("Invalid email address"));
+
+        AuditProperties.Mail missingCredentials = new AuditProperties.Mail(
+                true, true, enabled.from(), enabled.to(), enabled.cc(), enabled.subject(),
+                new AuditProperties.Smtp("mail.company.example", 2525, "smtp", true,
+                        " ", " ", true));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        withMail(base, context, missingCredentials)))
+                .getMessage().contains("smtpUsername"));
+
+        AuditProperties.Mail disabled = new AuditProperties.Mail(
+                false, true, null, null, null, null, null);
+        assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
+                withMail(base, null, disabled)));
+    }
+
+    @Test
+    void mailSubjectMustBeOneLine() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        AuditProperties.AuditContext context = new AuditProperties.AuditContext(
+                "Payments", "9.5-GA", "Sprint-5");
+        AuditProperties.Smtp smtp = new AuditProperties.Smtp(
+                "mail.company.example", 2525, "smtp", true,
+                "audit-user", "test-password", true);
+        AuditProperties.Mail invalid = new AuditProperties.Mail(
+                true, true, "audit@company.example", List.of("dev@company.example"),
+                List.of(), "Audit report\nBcc: unexpected@company.example", smtp);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        withMail(base, context, invalid)));
+
+        assertTrue(error.getMessage().contains("subject must be a single line"));
+    }
+
+    @Test
     void checkpointsMustDefineExactlyThreeAndTen() {
         AuditProperties base = TestAuditProperties.settings(3);
         Map<Integer, AuditProperties.Checkpoint> onlyDayThree = Map.of(
@@ -268,6 +335,13 @@ class AuditConfigurationValidatorTest {
                                         Map<Integer, AuditProperties.Checkpoint> checkpoints,
                                         AuditProperties.Artifacts artifacts) {
         return new AuditProperties(jira, base.jql(), day, base.pageSize(), checkpoints,
-                artifacts, base.report());
+                artifacts, base.report(), base.context(), base.mail());
+    }
+
+    private static AuditProperties withMail(AuditProperties base,
+                                            AuditProperties.AuditContext context,
+                                            AuditProperties.Mail mail) {
+        return new AuditProperties(base.jira(), base.jql(), base.runDay(), base.pageSize(),
+                base.checkpoints(), base.artifacts(), base.report(), context, mail);
     }
 }

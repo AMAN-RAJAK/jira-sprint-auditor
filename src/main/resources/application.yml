@@ -14,6 +14,18 @@ audit:
     base-url: ${JIRA_BASE_URL:}
     personal-access-token: ${JIRA_PERSONAL_ACCESS_TOKEN:${JIRA_ACCESS_TOKEN:}}
 
+  # Map the company's existing SMTP property names into the typed mail settings.
+  # The first defined property in each chain is used.
+  mail:
+    smtp:
+      host-ip: ${smtpHostip:${SMTP_HOST_IP:${mail.smtp.host:${MAIL_SMTP_HOST:}}}}
+      port: ${smtpPort:${SMTP_PORT:${mail.smtp.port:${MAIL_SMTP_PORT:25}}}}
+      protocol: ${smtpProtocol:${SMTP_PROTOCOL:smtp}}
+      authentication-required: ${smptpAuthenticationRequired:${smtpAuthenticationRequired:${SMTP_AUTHENTICATION_REQUIRED:true}}}
+      username: ${smtpUsername:${SMTP_USERNAME:}}
+      password: ${smtpPassword:${SMTP_PASSWORD:}}
+      start-tls-enabled: ${smtpStartTlsEnabled:${SMTP_STARTTLS_ENABLED:true}}
+
 # Company audit rules intentionally live outside the jar. Start from
 # config/company-audit.example.yml and save the edited copy as
 # ./company-audit.yml.

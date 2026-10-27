@@ -17,14 +17,17 @@ public class AuditRunner implements ApplicationRunner {
     private final JiraClient jiraClient;
     private final PolicyEvaluator evaluator;
     private final ExcelReportWriter reportWriter;
+    private final AuditMailer mailer;
     private int exitCode;
 
     public AuditRunner(AuditProperties properties, JiraClient jiraClient,
-                       PolicyEvaluator evaluator, ExcelReportWriter reportWriter) {
+                       PolicyEvaluator evaluator, ExcelReportWriter reportWriter,
+                       AuditMailer mailer) {
         this.properties = properties;
         this.jiraClient = jiraClient;
         this.evaluator = evaluator;
         this.reportWriter = reportWriter;
+        this.mailer = mailer;
     }
 
     @Override
@@ -69,6 +72,7 @@ public class AuditRunner implements ApplicationRunner {
                 System.out.printf("FAIL  %s | %s: %s%n",
                         check.issueKey(), check.checkName(), check.reason()));
         System.out.println("Excel report: " + workbook);
+        mailer.sendIfEnabled(checks, issues.size(), runDay, workbook);
         if (!failedIssues.isEmpty() && !Boolean.FALSE.equals(properties.report().failOnViolations())) {
             exitCode = 2;
         }

@@ -60,7 +60,7 @@ class PolicyEvaluatorTest {
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3,
                 base.pageSize(), base.checkpoints(),
                 new AuditProperties.Artifacts("WBS$WORK_BREAKDOWN", base.artifacts().day10()),
-                base.report());
+                base.report(), base.context(), base.mail());
         var issue = issue("""
                 {"status":{"name":"In Progress"},"coding":"In Progress",
                  "download":"Started","attachment":[{"filename":"IAD_wbs-scope.xlsx"}]}
@@ -274,7 +274,7 @@ class PolicyEvaluatorTest {
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
                 base.checkpoints().get(3).linkedBugs()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
-                checkpoints, base.artifacts(), base.report());
+                checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
         var issue = issue("""
                 {"status":{"name":"In Progress"},"coding":"In Progress",
                  "download":"Not Applicable (POC, Backporting, NoCodeChange)",
@@ -301,7 +301,7 @@ class PolicyEvaluatorTest {
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
                 base.checkpoints().get(3).linkedBugs()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
-                checkpoints, base.artifacts(), base.report());
+                checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
 
         var populated = issue("""
                 {"status":{"name":"In Progress"},"coding":"In Progress","download":"Started",
