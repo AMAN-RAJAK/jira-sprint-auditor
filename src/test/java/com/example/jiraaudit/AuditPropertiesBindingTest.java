@@ -107,6 +107,10 @@ class AuditPropertiesBindingTest {
                     properties.checkpoints().get(10).completionComment().completedValueList());
             assertEquals("Merged feature file link:",
                     properties.checkpoints().get(10).completionComment().commentPrefix());
+            assertEquals("customfield_10107",
+                    properties.checkpoints().get(10).atddScenarioCount().jiraField());
+            assertEquals("PQM",
+                    properties.checkpoints().get(10).atddScenarioCount().responsibleTeam());
             assertEquals(List.of("WBS", "WORK_BREAKDOWN"),
                     properties.artifacts().day3WbsPrefixList());
             assertEquals(List.of("WBS", "WORK_BREAKDOWN"),

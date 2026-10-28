@@ -47,6 +47,8 @@ sprint-calendar, or time-zone calculation.
   own configurable Not Applicable values.
 - ATDD Status decides the ATDD/UT evidence path. An applicable ATDD Status
   requires ATDD. A Not Applicable ATDD Status requires UT or a UT comment.
+- Scenario Count may be empty when ATDD Status is Not Applicable, but must
+  contain a meaningful value when ATDD Status is applicable.
 - UT and ATDD may both be attached; neither artifact invalidates the other.
 - Every directly linked issue whose type matches the configured Bug issue type
   must have one of the configured resolved statuses.
@@ -54,7 +56,7 @@ sprint-calendar, or time-zone calculation.
   must contain `Merged feature file link:` followed by a non-empty link or
   reference. The field, completed values, and prefix are configurable.
 
-The Day-10 artifact decisions are:
+The Day-10 compliance decisions are:
 
 | Artifact | Rule |
 |---|---|
@@ -63,6 +65,7 @@ The Day-10 artifact decisions are:
 | ST | If ST Status is configured as Not Applicable, ST must be absent; otherwise ST attachment or the configured ST comment is required |
 | ATDD | If ATDD Status is applicable, ATDD must be attached and cannot be waived by a comment; otherwise ATDD is optional |
 | UT | If ATDD Status is Not Applicable, UT must be attached or have the configured `UT Not Applicable` comment; otherwise UT is optional |
+| Scenario Count | May be missing, blank, or populated when ATDD Status is Not Applicable; must be non-empty when ATDD Status is applicable |
 | GWT completion comment | When GWT Status is completed, require the configured comment prefix followed by a non-empty link/reference |
 | Linked Bugs | Every directly linked Bug must have a configured resolved status; unresolved or incomplete linked-issue data fails the parent ticket |
 
@@ -198,6 +201,7 @@ Configure these company-specific values in `company-audit.yml`:
 - `audit.artifacts.day-3-wbs-prefix`: the Day-3 WBS filename marker or alternative markers;
 - Day-10 WBS markers and CWC, UT, ATDD, and ST filename prefixes;
 - the Day-10 field-rule mapping for CWC, ATDD, and ST;
+- the Day-10 conditional `atdd-scenario-count` Jira field and responsible team;
 - each mapped artifact's configurable `not-applicable-values`;
 - CWC, UT, and ST standard `comment-contains` phrases;
 - the optional checkpoint `completion-comment` rule for completed GWT Status;
@@ -280,6 +284,23 @@ The `$` character is reserved as the separator and cannot be part of an
 accepted Jira value. Leading and trailing spaces around each separated value
 are ignored. Empty values such as `Done$$Not Applicable` are rejected during
 startup validation.
+
+Configure Scenario Count as a separate conditional field under the Day-10
+checkpoint. Do not also configure the same Jira field under the regular
+`fields` section:
+
+```yaml
+atdd-scenario-count:
+  label: Scenario Count
+  jira-field: customfield_10107
+  responsible-team: PQM
+```
+
+The validation uses the existing ATDD artifact mapping to decide whether ATDD
+Status is applicable. Empty means a missing field, Jira `null`, blank text, an
+empty array, or an empty object. Numbers including `0` and any other meaningful
+value count as populated. A failure appears as a field failure owned by the
+configured responsible team in the Excel report.
 
 Configure the GWT completion-comment validation inside the applicable
 checkpoint. Both lists use case-insensitive matching, and completed values use

@@ -91,6 +91,15 @@ audit:
           responsible-team: DEV
           accepted-values: 'Completed$Not Applicable'
 
+      # Scenario Count is conditional on the ATDD Status rule configured under
+      # artifacts.day-10.atdd. It may be empty when ATDD is Not Applicable,
+      # but must contain a value when ATDD is applicable.
+      atdd-scenario-count:
+        label: Scenario Count
+        # Replace this sample with the real Scenario Count Jira field ID.
+        jira-field: customfield_10107
+        responsible-team: PQM
+
       # When the configured GWT field has any completed value below, a Jira
       # comment must contain this prefix followed by a non-empty link/reference.
       completion-comment:

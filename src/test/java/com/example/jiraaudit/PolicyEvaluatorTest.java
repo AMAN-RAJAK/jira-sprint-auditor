@@ -273,7 +273,8 @@ class PolicyEvaluatorTest {
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
                 base.checkpoints().get(3).linkedBugs(),
-                base.checkpoints().get(3).completionComment()));
+                base.checkpoints().get(3).completionComment(),
+                base.checkpoints().get(3).atddScenarioCount()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
                 checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
         var issue = issue("""
@@ -301,7 +302,8 @@ class PolicyEvaluatorTest {
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
                 base.checkpoints().get(3).linkedBugs(),
-                base.checkpoints().get(3).completionComment()));
+                base.checkpoints().get(3).completionComment(),
+                base.checkpoints().get(3).atddScenarioCount()));
         AuditProperties custom = new AuditProperties(base.jira(), base.jql(), 3, base.pageSize(),
                 checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
 
@@ -395,6 +397,66 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    void applicableAtddRequiresNonEmptyScenarioCount() throws Exception {
+        AuditProperties properties = withAtddScenarioCount();
+        for (String scenarioJson : List.of("null", "\"\"", "\"   \"", "[]", "{}")) {
+            var issue = issue("""
+                    {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                     "atdd":"Done - On Time","scenarioCount":%s,
+                     "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                     {"filename":"ATDD_results"},{"filename":"ST_results"}]}
+                    """.formatted(scenarioJson));
+
+            CheckResult scenario = result(evaluator.evaluate(issue, properties, 10, List.of()),
+                    "ATDD_SCENARIO_COUNT");
+            assertEquals(FAIL, scenario.outcome(), "Expected empty value to fail: " + scenarioJson);
+            assertTrue(scenario.reason().contains("must not be empty"));
+            assertEquals("PQM", scenario.responsibleTeam());
+        }
+
+        var missing = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time",
+                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                 {"filename":"ATDD_results"},{"filename":"ST_results"}]}
+                """);
+        CheckResult missingScenario = result(evaluator.evaluate(
+                missing, properties, 10, List.of()), "ATDD_SCENARIO_COUNT");
+        assertEquals(FAIL, missingScenario.outcome());
+        assertTrue(missingScenario.actual().contains("<not returned>"));
+
+        var populated = issue("""
+                {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                 "atdd":"Done - On Time","scenarioCount":0,
+                 "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                 {"filename":"ATDD_results"},{"filename":"ST_results"}]}
+                """);
+        assertEquals(PASS, result(evaluator.evaluate(populated, properties, 10, List.of()),
+                "ATDD_SCENARIO_COUNT").outcome());
+    }
+
+    @Test
+    void notApplicableAtddAllowsMissingEmptyOrPopulatedScenarioCount() throws Exception {
+        AuditProperties properties = withAtddScenarioCount();
+        for (String optionalScenario : List.of(
+                "", ",\"scenarioCount\":null", ",\"scenarioCount\":\"\"",
+                ",\"scenarioCount\":7")) {
+            var issue = issue("""
+                    {"status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
+                     "atdd":"Not Applicable"%s,
+                     "attachment":[{"filename":"WBS_scope"},{"filename":"CWC_review"},
+                     {"filename":"UT_results"},{"filename":"ST_results"}]}
+                    """.formatted(optionalScenario));
+
+            CheckResult scenario = result(evaluator.evaluate(issue, properties, 10, List.of()),
+                    "ATDD_SCENARIO_COUNT");
+            assertEquals(PASS, scenario.outcome(),
+                    "Expected Scenario Count to be optional: " + optionalScenario);
+            assertTrue(scenario.reason().contains("optional"));
+        }
+    }
+
+    @Test
     void rejectsMissingEssentialJiraMetadata() throws Exception {
         var fields = MAPPER.readTree("""
                 {"summary":"Story","assignee":null,"coding":"In Progress",
@@ -424,7 +486,20 @@ class PolicyEvaluatorTest {
         checkpoints.put(10, new AuditProperties.Checkpoint(fields,
                 base.checkpoints().get(10).linkedBugs(),
                 new AuditProperties.CompletionCommentRule(
-                        "gwt-status", "Completed", "Merged feature file link:")));
+                        "gwt-status", "Completed", "Merged feature file link:"), null));
+        return new AuditProperties(base.jira(), base.jql(), 10, base.pageSize(), checkpoints,
+                base.artifacts(), base.report(), base.context(), base.mail());
+    }
+
+    private AuditProperties withAtddScenarioCount() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        AuditProperties.Checkpoint dayTen = base.checkpoints().get(10);
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
+                dayTen.linkedBugs(), dayTen.completionComment(),
+                new AuditProperties.ScenarioCountRule(
+                        "Scenario Count", "scenarioCount", "PQM")));
         return new AuditProperties(base.jira(), base.jql(), 10, base.pageSize(), checkpoints,
                 base.artifacts(), base.report(), base.context(), base.mail());
     }

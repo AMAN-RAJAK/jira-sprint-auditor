@@ -67,11 +67,12 @@ class AuditRunnerTest {
 
     @Test
     void dayTenDoesNotFetchCommentsWhenAtddIsApplicableAndUtIsAbsent() throws Exception {
-        AuditProperties properties = properties(10, true);
+        AuditProperties properties = withScenarioCount(properties(10, true));
         var fields = MAPPER.readTree("""
                 {"summary":"ATDD story","assignee":{"displayName":"Asha Rao"},
                  "status":{"name":"Done"},"coding":"Done - On Time","st":"Done - On Time",
-                 "atdd":"Done - On Time","attachment":[{"filename":"WBS_scope"},
+                 "atdd":"Done - On Time","scenarioCount":5,
+                 "attachment":[{"filename":"WBS_scope"},
                  {"filename":"CWC_review"},{"filename":"ATDD_evidence"},
                  {"filename":"ST_results"}],"issuelinks":[]}
                 """);
@@ -97,6 +98,7 @@ class AuditRunnerTest {
 
         assertEquals(0, commentCalls.get());
         assertTrue(requested.get().contains("issuelinks"));
+        assertTrue(requested.get().contains("scenarioCount"));
         assertEquals(0, runner.exitCode());
         try (InputStream input = Files.newInputStream(onlyWorkbook());
              XSSFWorkbook workbook = new XSSFWorkbook(input)) {
@@ -188,5 +190,16 @@ class AuditRunnerTest {
         return new AuditProperties(base.jira(), base.jql(), null, base.pageSize(),
                 base.checkpoints(), base.artifacts(), base.report(),
                 base.context(), base.mail());
+    }
+
+    private AuditProperties withScenarioCount(AuditProperties base) {
+        var checkpoints = new java.util.LinkedHashMap<>(base.checkpoints());
+        AuditProperties.Checkpoint dayTen = checkpoints.get(10);
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
+                dayTen.linkedBugs(), dayTen.completionComment(),
+                new AuditProperties.ScenarioCountRule(
+                        "Scenario Count", "scenarioCount", "PQM")));
+        return new AuditProperties(base.jira(), base.jql(), base.runDay(), base.pageSize(),
+                checkpoints, base.artifacts(), base.report(), base.context(), base.mail());
     }
 }

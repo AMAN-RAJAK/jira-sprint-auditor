@@ -59,9 +59,43 @@ public class PolicyEvaluator {
         addCompletionCommentCheck(results, details, fields, checkpoint,
                 commentsNewestFirst == null ? List.of() : commentsNewestFirst);
         if (policyDay == 10) {
+            addAtddScenarioCountCheck(results, details, fields, checkpoint, properties);
             addLinkedBugChecks(results, details, fields, checkpoint.linkedBugs());
         }
         return results;
+    }
+
+    private static void addAtddScenarioCountCheck(
+            List<CheckResult> results,
+            IssueDetails details,
+            JsonNode fields,
+            AuditProperties.Checkpoint checkpoint,
+            AuditProperties properties) {
+        AuditProperties.ScenarioCountRule scenarioRule = checkpoint.atddScenarioCount();
+        if (scenarioRule == null) return;
+
+        AuditProperties.ArtifactRule atddRule = properties.artifacts().day10().atdd();
+        boolean atddNotApplicable = hasNotApplicableFieldEvidence(
+                fields, checkpoint.fields(), atddRule);
+        JsonNode scenarioValue = fields.get(scenarioRule.jiraField());
+        boolean populated = hasMeaningfulValue(scenarioValue);
+        boolean passed = atddNotApplicable || populated;
+        String label = displayLabel("atdd-scenario-count", scenarioRule.label());
+        String atddEvidence = fieldEvidence(fields, checkpoint.fields(), atddRule);
+        String actual = scenarioValue == null
+                ? "<not returned>; " + atddEvidence
+                : displayValues(flattenValues(scenarioValue)) + "; " + atddEvidence;
+        String expected = atddNotApplicable
+                ? "Scenario Count may be empty or contain any value when " + atddEvidence
+                : "Any non-empty Scenario Count when " + atddEvidence;
+        String reason = atddNotApplicable
+                ? "Scenario Count is optional because ATDD Status is Not Applicable"
+                : populated
+                        ? "Scenario Count contains a value for the applicable ATDD Status"
+                        : "Scenario Count must not be empty when ATDD Status is applicable";
+        results.add(new CheckResult(details, "FIELD", "ATDD_SCENARIO_COUNT", label,
+                scenarioRule.jiraField(), expected, actual, passed ? PASS : FAIL,
+                reason, scenarioRule.responsibleTeam()));
     }
 
     public boolean requiresComments(JiraClient.JiraIssue issue, AuditProperties properties, int runDay) {

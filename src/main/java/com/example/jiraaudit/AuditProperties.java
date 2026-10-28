@@ -21,7 +21,8 @@ public record AuditProperties(
     public record Jira(String baseUrl, String personalAccessToken) { }
     public record AuditContext(String teamName, String gaVersion, String sprintPhase) { }
     public record Checkpoint(Map<String, FieldRule> fields, LinkedBugRule linkedBugs,
-                             CompletionCommentRule completionComment) { }
+                             CompletionCommentRule completionComment,
+                             ScenarioCountRule atddScenarioCount) { }
     public record FieldRule(String label, String jiraField, String responsibleTeam,
                             String acceptedValues) {
         public static final String NON_EMPTY_VALUE = "__NON_EMPTY__";
@@ -46,6 +47,8 @@ public record AuditProperties(
             return dollarSeparatedValues(completedValues);
         }
     }
+    public record ScenarioCountRule(String label, String jiraField,
+                                    String responsibleTeam) { }
     public record Artifacts(String day3WbsPrefix, Day10Artifacts day10) {
         public List<String> day3WbsPrefixList() {
             return dollarSeparatedValues(day3WbsPrefix);

@@ -41,7 +41,12 @@ public class AuditRunner implements ApplicationRunner {
                 List.of("summary", "assignee", "status", "attachment"));
         properties.checkpoints().get(policyDay).fields().values()
                 .forEach(rule -> requestedFields.add(rule.jiraField()));
-        if (policyDay == 10) requestedFields.add("issuelinks");
+        if (policyDay == 10) {
+            requestedFields.add("issuelinks");
+            AuditProperties.ScenarioCountRule scenarioCount =
+                    properties.checkpoints().get(10).atddScenarioCount();
+            if (scenarioCount != null) requestedFields.add(scenarioCount.jiraField());
+        }
 
         System.out.printf("Jira audit | Declared Day %d | Policy Day %d | JQL: %s%n",
                 runDay, policyDay, properties.jql());

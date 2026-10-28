@@ -131,7 +131,7 @@ class AuditConfigurationValidatorTest {
         Map<Integer, AuditProperties.Checkpoint> checkpoints =
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(10, new AuditProperties.Checkpoint(
-                base.checkpoints().get(10).fields(), null, null));
+                base.checkpoints().get(10).fields(), null, null, null));
 
         IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
@@ -140,7 +140,7 @@ class AuditConfigurationValidatorTest {
 
         checkpoints.put(10, new AuditProperties.Checkpoint(
                 base.checkpoints().get(10).fields(),
-                new AuditProperties.LinkedBugRule("Bug", "Resolved$$Done"), null));
+                new AuditProperties.LinkedBugRule("Bug", "Resolved$$Done"), null, null));
         IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, checkpoints, base.artifacts())));
@@ -155,7 +155,7 @@ class AuditConfigurationValidatorTest {
         AuditProperties.Checkpoint dayTen = base.checkpoints().get(10);
         checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
                 dayTen.linkedBugs(), new AuditProperties.CompletionCommentRule(
-                "unknown-field", "Completed", "Merged feature file link:")));
+                "unknown-field", "Completed", "Merged feature file link:"), null));
 
         IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
@@ -164,11 +164,37 @@ class AuditConfigurationValidatorTest {
 
         checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
                 dayTen.linkedBugs(), new AuditProperties.CompletionCommentRule(
-                "coding-status", "Completed$$Done", "Merged feature file link:")));
+                "coding-status", "Completed$$Done", "Merged feature file link:"), null));
         IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(
                         copy(base, base.jira(), 10, checkpoints, base.artifacts())));
         assertTrue(empty.getMessage().contains("empty $-separated"));
+    }
+
+    @Test
+    void scenarioCountRuleRequiresAUniqueFieldAndResponsibleTeam() {
+        AuditProperties base = TestAuditProperties.settings(10);
+        Map<Integer, AuditProperties.Checkpoint> checkpoints =
+                new LinkedHashMap<>(base.checkpoints());
+        AuditProperties.Checkpoint dayTen = base.checkpoints().get(10);
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
+                dayTen.linkedBugs(), dayTen.completionComment(),
+                new AuditProperties.ScenarioCountRule(
+                        "Scenario Count", "coding", "PQM")));
+
+        IllegalArgumentException duplicate = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(duplicate.getMessage().contains("must not duplicate"));
+
+        checkpoints.put(10, new AuditProperties.Checkpoint(dayTen.fields(),
+                dayTen.linkedBugs(), dayTen.completionComment(),
+                new AuditProperties.ScenarioCountRule(
+                        "Scenario Count", "scenarioCount", " ")));
+        IllegalArgumentException team = assertThrows(IllegalArgumentException.class,
+                () -> AuditConfigurationValidator.validatePolicy(
+                        copy(base, base.jira(), 10, checkpoints, base.artifacts())));
+        assertTrue(team.getMessage().contains("responsible-team"));
     }
 
     @Test
@@ -182,7 +208,8 @@ class AuditConfigurationValidatorTest {
         Map<Integer, AuditProperties.Checkpoint> checkpoints = new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(10, new AuditProperties.Checkpoint(dayTen,
                 base.checkpoints().get(10).linkedBugs(),
-                base.checkpoints().get(10).completionComment()));
+                base.checkpoints().get(10).completionComment(),
+                base.checkpoints().get(10).atddScenarioCount()));
         assertDoesNotThrow(() -> AuditConfigurationValidator.validatePolicy(
                 copy(base, base.jira(), 10, checkpoints, base.artifacts())));
 
@@ -219,7 +246,8 @@ class AuditConfigurationValidatorTest {
                 new LinkedHashMap<>(base.checkpoints());
         checkpoints.put(3, new AuditProperties.Checkpoint(fields,
                 base.checkpoints().get(3).linkedBugs(),
-                base.checkpoints().get(3).completionComment()));
+                base.checkpoints().get(3).completionComment(),
+                base.checkpoints().get(3).atddScenarioCount()));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> AuditConfigurationValidator.validatePolicy(

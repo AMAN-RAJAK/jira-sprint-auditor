@@ -148,9 +148,31 @@ public final class AuditConfigurationValidator {
                 throw new IllegalArgumentException(
                         "linked-bugs is a final Day 10 check and must not be configured for Day 3");
             }
+            validateScenarioCount(day, checkpoint.atddScenarioCount(), checkpoint.fields());
             validateCompletionComment(day, checkpoint.completionComment(), checkpoint.fields());
             if (day == 10) validateLinkedBugs(checkpoint.linkedBugs());
         });
+    }
+
+    private static void validateScenarioCount(
+            int day,
+            AuditProperties.ScenarioCountRule rule,
+            Map<String, AuditProperties.FieldRule> fields) {
+        if (rule == null) return;
+        if (day != 10) {
+            throw new IllegalArgumentException(
+                    "atdd-scenario-count is a final Day 10 check and must not be configured for Day " + day);
+        }
+        required(rule.label(), "Day 10 atdd-scenario-count.label");
+        required(rule.jiraField(), "Day 10 atdd-scenario-count.jira-field");
+        required(rule.responsibleTeam(), "Day 10 atdd-scenario-count.responsible-team");
+        boolean duplicatesField = fields.values().stream()
+                .map(AuditProperties.FieldRule::jiraField)
+                .anyMatch(field -> normalize(field).equals(normalize(rule.jiraField())));
+        if (duplicatesField) {
+            throw new IllegalArgumentException("Day 10 atdd-scenario-count.jira-field must not " +
+                    "duplicate a regular field rule: " + rule.jiraField());
+        }
     }
 
     private static void validateCompletionComment(
